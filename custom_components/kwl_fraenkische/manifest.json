@@ -1,0 +1,16 @@
+{
+  "domain": "kwl_fraenkische",
+  "name": "KWL Fränkische Rohrwerke",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/johnnyh1975/ha-kwl-fraenkische",
+  "issue_tracker": "https://github.com/johnnyh1975/ha-kwl-fraenkische/issues",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [
+    "@johnnyh1975"
+  ],
+  "iot_class": "local_polling",
+  "icon": "mdi:fan",
+  "quality_scale": "platinum"
+}

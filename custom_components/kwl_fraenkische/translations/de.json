@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KWL Fränkische Rohrwerke einrichten",
+        "description": "Gib die IP-Adresse deiner KWL-Anlage ein.",
+        "data": {
+          "host": "IP-Adresse"
+        }
+      },
+      "auth": {
+        "title": "Installateur-Zugangsdaten",
+        "description": "Zugangsdaten für den Installateur-Bereich von {host}.\nWerkseinstellung: Benutzer 'install', Passwort 'konfig12'.\nAus Sicherheitsgründen empfehlen wir das Passwort am Gerät zu ändern.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Zugangsdaten erneuern",
+        "description": "Die Authentifizierung für {host} ist fehlgeschlagen. Bitte neue Zugangsdaten eingeben.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "reconfigure": {
+        "title": "KWL neu konfigurieren",
+        "description": "Ändere IP-Adresse oder Zugangsdaten.",
+        "data": {
+          "host": "IP-Adresse",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "watt": {
+        "title": "Nennleistung pro Stufe",
+        "description": "Gib die gemessene Leistungsaufnahme deiner KWL pro Lüftungsstufe ein. Die Standardwerte gelten für die Profi-Air 400.",
+        "data": {
+          "watt_level_1": "Stufe 1 – Feuchteschutz (Watt)",
+          "watt_level_2": "Stufe 2 – Reduziert (Watt)",
+          "watt_level_3": "Stufe 3 – Nennlüftung (Watt)",
+          "watt_level_4": "Stufe 4 – Intensivlüftung (Watt)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zur KWL nicht möglich. Prüfe IP-Adresse und Netzwerk.",
+      "invalid_response": "Unerwartete Antwort – ist das eine KWL von Fränkische Rohrwerke?",
+      "invalid_auth": "Benutzername oder Passwort falsch."
+    },
+    "abort": {
+      "already_configured": "Diese KWL ist bereits eingerichtet (gleiche MAC-Adresse).",
+      "reauth_successful": "Authentifizierung erfolgreich erneuert.",
+      "reconfigure_successful": "Konfiguration erfolgreich aktualisiert."
+    }
+  },
+  "entity": {
+    "fan": {
+      "kwl_fan": {
+        "name": "Lüftung",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Stufe 1 - Feuchteschutz": "Stufe 1 – Feuchteschutz",
+              "Stufe 2 - Reduziert": "Stufe 2 – Reduziert",
+              "Stufe 3 - Nennlueeftung": "Stufe 3 – Nennlüftung",
+              "Stufe 4 - Intensivlueeftung": "Stufe 4 – Intensivlüftung"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "filter_needs_replacement": {
+      "title": "KWL Filter muss gewechselt werden",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Filter gewechselt?",
+            "description": "Bitte den Filter der KWL wechseln und bestätigen. Der Alarm wird automatisch quittiert."
+          }
+        }
+      }
+    }
+  }
+}

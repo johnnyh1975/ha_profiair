@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up KWL Fränkische Rohrwerke",
+        "description": "Enter the IP address of your KWL unit.",
+        "data": {
+          "host": "IP Address"
+        }
+      },
+      "auth": {
+        "title": "Installer Credentials",
+        "description": "Credentials for the installer area of {host}.\nFactory default: user 'install', password 'konfig12'.\nFor security reasons we recommend changing the password on the device.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "Authentication for {host} failed. Please enter new credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure KWL",
+        "description": "Change IP address or credentials.",
+        "data": {
+          "host": "IP Address",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "watt": {
+        "title": "Nominal power per level",
+        "description": "Enter the measured power consumption of your KWL per ventilation level. Default values apply to the Profi-Air 400.",
+        "data": {
+          "watt_level_1": "Level 1 – Moisture Protection (Watt)",
+          "watt_level_2": "Level 2 – Reduced (Watt)",
+          "watt_level_3": "Level 3 – Nominal Ventilation (Watt)",
+          "watt_level_4": "Level 4 – Intensive Ventilation (Watt)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the KWL. Check IP address and network.",
+      "invalid_response": "Unexpected response — is this a Fränkische Rohrwerke KWL?",
+      "invalid_auth": "Incorrect username or password."
+    },
+    "abort": {
+      "already_configured": "This KWL is already configured (same MAC address).",
+      "reauth_successful": "Re-authentication successful.",
+      "reconfigure_successful": "Configuration updated successfully."
+    }
+  },
+  "entity": {
+    "fan": {
+      "kwl_fan": {
+        "name": "Ventilation",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Stufe 1 - Feuchteschutz": "Level 1 – Moisture Protection",
+              "Stufe 2 - Reduziert": "Level 2 – Reduced",
+              "Stufe 3 - Nennlueeftung": "Level 3 – Nominal Ventilation",
+              "Stufe 4 - Intensivlueeftung": "Level 4 – Intensive Ventilation"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "filter_needs_replacement": {
+      "title": "KWL filter needs replacement",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Filter replaced?",
+            "description": "Please replace the KWL filter and confirm. The alarm will be automatically acknowledged on the device."
+          }
+        }
+      }
+    }
+  }
+}

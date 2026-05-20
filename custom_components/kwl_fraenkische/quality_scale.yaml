@@ -1,0 +1,137 @@
+# Integration Quality Scale declaration
+# https://developers.home-assistant.io/docs/core/integration-quality-scale/
+rules:
+
+  # ── Bronze (alle Pflicht) ────────────────────────────────────────────────
+  action-setup:
+    status: exempt
+    comment: >
+      Integration registriert keine eigenen HA-Actions/Services.
+      Steuerung erfolgt direkt ueber Entity-Methoden (fan, select, number, button).
+  appropriate-polling:
+    status: done
+    comment: Polling alle 30 Sekunden -- realistisch fuer eine lokale KWL.
+  brands:
+    status: done
+  common-modules:
+    status: done
+    comment: coordinator.py, const.py nach HA-Standard strukturiert.
+  config-flow:
+    status: done
+    comment: Zweistufiger Config Flow -- IP-Adresse, dann BasicAuth.
+  config-flow-test-coverage:
+    status: done
+    comment: test_config_flow.py mit 8 Tests fuer _fetch_device_info und _test_auth.
+  dependency-transparency:
+    status: done
+    comment: Keine externen PyPI-Abhaengigkeiten -- nur aiohttp (HA-Standard).
+  docs-actions:
+    status: exempt
+    comment: Keine eigenen Actions registriert.
+  docs-high-level-description:
+    status: done
+    comment: README.md beschreibt die Integration vollstaendig.
+  docs-installation-instructions:
+    status: done
+  docs-removal-instructions:
+    status: done
+  entity-event-setup:
+    status: exempt
+    comment: Polling-Integration, keine Event-basierten Updates.
+  entity-unique-id:
+    status: done
+    comment: Alle Entities nutzen MAC-Adresse als stabilen Identifier.
+  has-entity-name:
+    status: done
+    comment: _attr_has_entity_name = True in allen Entity-Klassen.
+  runtime-data:
+    status: done
+    comment: entry.runtime_data Pattern (HA 2024.4+) implementiert.
+  test-before-setup:
+    status: done
+    comment: async_config_entry_first_refresh() bricht bei Verbindungsfehler ab.
+  unique-config-entry:
+    status: done
+    comment: MAC-Adresse als unique_id verhindert Duplikate.
+
+  # ── Silver ──────────────────────────────────────────────────────────────
+  config-entry-unloading:
+    status: done
+    comment: async_unload_entry sauber implementiert.
+  docs-configuration-parameters:
+    status: done
+  docs-installation-parameters:
+    status: done
+  entity-unavailable:
+    status: done
+    comment: >
+      Alle Entities geben None/unavailable zurueck wenn
+      coordinator.last_update_success False ist.
+  integration-owner:
+    status: done
+    comment: "@johnnyh1975 als codeowner in manifest.json eingetragen."
+  log-when-unavailable:
+    status: done
+    comment: Coordinator loggt Verbindungsfehler als WARNING.
+  parallel-updates:
+    status: done
+    comment: >
+      PARALLEL_UPDATES = 1 fuer schreibende Plattformen,
+      PARALLEL_UPDATES = 0 fuer lesende Plattformen.
+  reauthentication-flow:
+    status: done
+    comment: async_step_reauth_confirm implementiert, ConfigEntryAuthFailed geworfen.
+  test-coverage:
+    status: done
+    comment: 109 Unit-Tests fuer coordinator, fan, select, sensor.
+
+  # ── Gold ────────────────────────────────────────────────────────────────
+  devices:
+    status: done
+    comment: Alle Entities gehoeren zu einem Device mit MAC als Identifier.
+  diagnostics:
+    status: done
+    comment: diagnostics.py implementiert mit Redacting sensitiver Daten.
+  discovery:
+    status: exempt
+    comment: >
+      Die KWL hat kein mDNS, SSDP oder DHCP-Discovery.
+      Lokale IP muss manuell eingegeben werden.
+  discovery-update-info:
+    status: exempt
+    comment: Kein Discovery implementiert.
+  docs-supported-devices:
+    status: done
+    comment: README beschreibt unterstuetzte Geraete (Profi-Air KWL).
+  docs-supported-functions:
+    status: done
+    comment: README listet alle Entities mit Beschreibung.
+  docs-troubleshooting:
+    status: done
+    comment: Installationsanleitung und Troubleshooting im README.
+  docs-use-cases:
+    status: done
+    comment: Automationsbeispiele im README.
+  reconfiguration-flow:
+    status: done
+    comment: async_step_reconfigure erlaubt IP und Zugangsdaten zu aendern.
+  repair-issues:
+    status: done
+    comment: repairs.py mit FilterRepairFlow -- automatische Erkennung und Quittierung.
+  stale-devices:
+    status: exempt
+    comment: Einzelgeraet-Integration -- kein Multi-Device-Szenario.
+  translations:
+    status: done
+    comment: Vollstaendige Uebersetzungen in de.json und en.json.
+
+  # ── Platinum ─────────────────────────────────────────────────────────────
+  async-dependency:
+    status: done
+    comment: aiohttp ist vollstaendig async.
+  inject-websession:
+    status: done
+    comment: async_get_clientsession(hass) statt eigener ClientSession.
+  strict-typing:
+    status: done
+    comment: Vollstaendige Type Annotations in allen Modulen. mypy-kompatibel.
