@@ -68,9 +68,28 @@ class MockEntityDescription:
     options: _Any = None
     # Button (keine extra Felder noetig)
 
+# homeassistant als Namespace-Package definieren
+import types
+ha_pkg = types.ModuleType('homeassistant')
+import tempfile, os
+_ha_tmpdir = tempfile.mkdtemp()
+ha_pkg.__path__ = [_ha_tmpdir]
+ha_pkg.__package__ = 'homeassistant'
+sys.modules['homeassistant'] = ha_pkg
+
+# homeassistant.helpers als Submodul des Namespace-Packages registrieren
+ha_helpers = types.ModuleType('homeassistant.helpers')
+ha_helpers.__path__ = []
+ha_pkg.helpers = ha_helpers
+sys.modules['homeassistant.helpers'] = ha_helpers
+
+ha_components = types.ModuleType('homeassistant.components')
+ha_components.__path__ = []
+ha_pkg.components = ha_components
+sys.modules['homeassistant.components'] = ha_components
+
 # Mock-Module registrieren
 mocks = {
-    'homeassistant': MagicMock(),
     'homeassistant.core': MagicMock(),
     'homeassistant.config_entries': MagicMock(ConfigEntry=MagicMock),
     'homeassistant.const': MagicMock(
@@ -123,6 +142,11 @@ mocks = {
     'homeassistant.helpers.aiohttp_client': MagicMock(),
     'homeassistant.helpers.event': MagicMock(),
     'homeassistant.helpers.device_registry': MagicMock(DeviceInfo=dict),
+    'homeassistant.helpers.issue_registry': MagicMock(
+        IssueSeverity=MagicMock(WARNING='warning'),
+        async_create_issue=MagicMock(),
+        async_delete_issue=MagicMock(),
+    ),
     'homeassistant.util': MagicMock(),
     'homeassistant.util.dt': MagicMock(),
 }

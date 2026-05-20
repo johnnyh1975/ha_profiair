@@ -6,7 +6,7 @@ from datetime import timedelta
 from xml.etree import ElementTree
 
 import aiohttp
-from homeassistant.components.repairs import IssueSeverity, async_create_issue, async_delete_issue
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.core import HomeAssistant
@@ -434,17 +434,17 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
 
         # Repair Issue fuer Filterwechsel
         if not data.filter_ok:
-            async_create_issue(
+            ir.async_create_issue(
                 self.hass,
                 DOMAIN,
                 "filter_needs_replacement",
                 is_fixable=True,
-                severity=IssueSeverity.WARNING,
+                severity=ir.IssueSeverity.WARNING,
                 translation_key="filter_needs_replacement",
                 data={"entry_id": self.config_entry.entry_id},
             )
         else:
-            async_delete_issue(self.hass, DOMAIN, "filter_needs_replacement")
+            ir.async_delete_issue(self.hass, DOMAIN, "filter_needs_replacement")
 
         return data
 
