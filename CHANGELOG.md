@@ -7,6 +7,13 @@ Die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [1.1.1] - 2026-05-21
+
+### Fixed
+- `AttributeError: 'KWLCoordinator' object has no attribute 'capabilities'` on every poll after upgrading to v1.1.0 — the attribute was accessed in `_async_update_data` before being initialized in `__init__`. Added `self.capabilities: KWLCapabilities | None = None` to `KWLCoordinator.__init__()`.
+
+---
+
 ## [1.1.0] - 2026-05-21
 
 ### Added
