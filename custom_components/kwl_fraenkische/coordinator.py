@@ -565,9 +565,10 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         self.capabilities: KWLCapabilities | None = None
         self._bypass_leak_count: int = 0
         self._motor_asym_count: int = 0
-        # Naechste Wartungswarnung erst wenn Betriebsstunden diesen Wert ueberschreiten
-        # Wird beim Quittieren auf aktuelle Stunden + 8760 gesetzt
-        self._maintenance_next_threshold: float = ANNUAL_MAINTENANCE_HOURS
+        # Naechste Wartungswarnung -- aus entry.options laden damit HA-Neustart ueberlebt
+        self._maintenance_next_threshold: float = entry.options.get(
+            "maintenance_next_threshold", ANNUAL_MAINTENANCE_HOURS
+        )
 
         scan_seconds = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(

@@ -110,10 +110,21 @@ class AnnualMaintenanceRepairFlow(RepairsFlow):
                     coordinator.data.hours_level_3 if coordinator.data else None,
                     coordinator.data.hours_level_4 if coordinator.data else None,
                 ]))
-                coordinator._maintenance_next_threshold = current + ANNUAL_MAINTENANCE_HOURS
+                new_threshold = current + ANNUAL_MAINTENANCE_HOURS
+                coordinator._maintenance_next_threshold = new_threshold
+
+                # In entry.options persistieren -- ueberlebt HA-Neustart
+                entry = coordinator.config_entry
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    options={
+                        **entry.options,
+                        "maintenance_next_threshold": new_threshold,
+                    },
+                )
                 _LOGGER.info(
                     "KWL Jahreswartung quittiert -- naechste Warnung bei %.0f Betriebsstunden",
-                    coordinator._maintenance_next_threshold,
+                    new_threshold,
                 )
 
             ir.async_delete_issue(self.hass, DOMAIN, "annual_maintenance_due")

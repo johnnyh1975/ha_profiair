@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA
 from .coordinator import KWLCapabilities, KWLCoordinator, _is_supported
@@ -27,6 +28,9 @@ PARALLEL_UPDATES = 1
 class KWLButtonDescription(ButtonEntityDescription):
     # GET-Endpunkt relativ zum Host
     cgi_path: str = ""
+    required_tag: str | None = field(default=None)
+    required_endpoint: str | None = field(default=None)
+    entity_category: EntityCategory | None = field(default=None)
 
 
 BUTTONS: tuple[KWLButtonDescription, ...] = (
