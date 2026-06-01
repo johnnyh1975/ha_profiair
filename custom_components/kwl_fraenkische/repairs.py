@@ -113,12 +113,13 @@ class AnnualMaintenanceRepairFlow(RepairsFlow):
                 new_threshold = current + ANNUAL_MAINTENANCE_HOURS
                 coordinator._maintenance_next_threshold = new_threshold
 
-                # In entry.options persistieren -- ueberlebt HA-Neustart
+                # In entry.data persistieren -- ueberlebt HA-Neustart ohne
+                # options_update_listener auszuloesen (der wuerde async_reload triggern)
                 entry = coordinator.config_entry
                 self.hass.config_entries.async_update_entry(
                     entry,
-                    options={
-                        **entry.options,
+                    data={
+                        **entry.data,
                         "maintenance_next_threshold": new_threshold,
                     },
                 )
