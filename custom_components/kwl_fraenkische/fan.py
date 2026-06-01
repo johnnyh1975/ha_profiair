@@ -1,9 +1,7 @@
-"""Fan-Entity fuer die KWL-Lueeftungsanlage."""
+"""Fan-Entity fuer die KWL-Lüftungsanlage."""
 from __future__ import annotations
 
-from typing import cast
-
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from . import KWLConfigEntry
@@ -22,8 +20,8 @@ PARALLEL_UPDATES = 1
 PRESET_MODES = {
     "Stufe 1 - Feuchteschutz": 1,
     "Stufe 2 - Reduziert": 2,
-    "Stufe 3 - Nennlueeftung": 3,
-    "Stufe 4 - Intensivlueeftung": 4,
+    "Stufe 3 - Nennlueftung": 3,
+    "Stufe 4 - Intensivlueftung": 4,
 }
 LEVEL_TO_PRESET = {v: k for k, v in PRESET_MODES.items()}
 
@@ -50,7 +48,7 @@ async def async_setup_entry(
 
 
 class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
-    """Repraesentiert die KWL-Lueeftungsanlage als Fan-Entity.
+    """Repraesentiert die KWL-Lüftungsanlage als Fan-Entity.
 
     Die KWL laeuft immer -- es gibt kein echtes Ausschalten.
     Deshalb wird FanEntityFeature.TURN_OFF bewusst NICHT gesetzt.
@@ -116,20 +114,12 @@ class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
-        attrs: dict = {}
+        """Nur Attribute die nicht bereits als separate Sensoren verfuegbar sind."""
+        attrs: dict[str, object] = {
+            "leistung_watt": self.coordinator.watt_map.get(self._current_level),
+        }
         if self._optimistic_level is not None:
             attrs["optimistic"] = True
-        if self.coordinator.data is not None:
-            data = self.coordinator.data
-            attrs.update({
-                "stufe": self._current_level,
-                "stufe_text": data.current_level_text,
-                "steuerungsmodus": data.control_mode,
-                "systemmeldung": data.system_message,
-                "zuluft_rpm": data.motor_zuluft_rpm,
-                "abluft_rpm": data.motor_abluft_rpm,
-                "leistung_watt": self.coordinator.watt_map.get(self._current_level),
-            })
         return attrs
 
     async def _set_level(self, level: int) -> None:
@@ -152,7 +142,7 @@ class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
         self,
         percentage: int | None = None,
         preset_mode: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> None:
         if preset_mode is not None:
             await self.async_set_preset_mode(preset_mode)

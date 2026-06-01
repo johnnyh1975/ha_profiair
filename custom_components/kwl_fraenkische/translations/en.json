@@ -10,7 +10,7 @@
       },
       "auth": {
         "title": "Installer Credentials",
-        "description": "Credentials for the installer area of {host}.\nFactory default: user 'install', password 'konfig12'.\nFor security reasons we recommend changing the password on the device.",
+        "description": "Credentials for the installer area of {host}.\nFactory default: user `install`, password `konfig12`.\nChange the password on the device for security.",
         "data": {
           "username": "Username",
           "password": "Password"
@@ -18,7 +18,7 @@
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
-        "description": "Authentication for {host} failed. Please enter new credentials.",
+        "description": "Authentication for {host} failed. Enter new credentials.",
         "data": {
           "username": "Username",
           "password": "Password"
@@ -35,17 +35,17 @@
       },
       "watt": {
         "title": "Nominal power per level",
-        "description": "Enter the measured power consumption of your KWL per ventilation level. Default values apply to the Profi-Air 400.",
+        "description": "Enter the measured power consumption per ventilation level. Defaults apply to the Profi-Air 400.",
         "data": {
-          "watt_level_1": "Level 1 – Moisture Protection (Watt)",
-          "watt_level_2": "Level 2 – Reduced (Watt)",
-          "watt_level_3": "Level 3 – Nominal Ventilation (Watt)",
-          "watt_level_4": "Level 4 – Intensive Ventilation (Watt)"
+          "watt_level_1": "Level 1 – Moisture Protection (W)",
+          "watt_level_2": "Level 2 – Reduced (W)",
+          "watt_level_3": "Level 3 – Nominal Ventilation (W)",
+          "watt_level_4": "Level 4 – Intensive Ventilation (W)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the KWL. Check IP address and network.",
+      "cannot_connect": "Cannot connect to the KWL. Check IP address and network.",
       "invalid_response": "Unexpected response — is this a Fränkische Rohrwerke KWL?",
       "invalid_auth": "Incorrect username or password."
     },
@@ -64,41 +64,109 @@
             "state": {
               "Stufe 1 - Feuchteschutz": "Level 1 – Moisture Protection",
               "Stufe 2 - Reduziert": "Level 2 – Reduced",
-              "Stufe 3 - Nennlueeftung": "Level 3 – Nominal Ventilation",
-              "Stufe 4 - Intensivlueeftung": "Level 4 – Intensive Ventilation"
+              "Stufe 3 - Nennlueftung": "Level 3 – Nominal Ventilation",
+              "Stufe 4 - Intensivlueftung": "Level 4 – Intensive Ventilation"
             }
           }
         }
       }
     },
     "sensor": {
+      "temp_abluft": {
+        "name": "Exhaust Air Temperature"
+      },
+      "temp_zuluft": {
+        "name": "Supply Air Temperature"
+      },
+      "temp_aussenluft": {
+        "name": "Outdoor Air Temperature"
+      },
+      "temp_fortluft": {
+        "name": "Extract Air Temperature"
+      },
+      "motor_zuluft_rpm": {
+        "name": "Supply Motor RPM"
+      },
+      "motor_abluft_rpm": {
+        "name": "Exhaust Motor RPM"
+      },
+      "motor_zuluft_volt": {
+        "name": "Supply Motor Voltage"
+      },
+      "motor_abluft_volt": {
+        "name": "Exhaust Motor Voltage"
+      },
+      "power_current": {
+        "name": "Current Power"
+      },
+      "energy_level_1": {
+        "name": "Energy Level 1"
+      },
+      "energy_level_2": {
+        "name": "Energy Level 2"
+      },
+      "energy_level_3": {
+        "name": "Energy Level 3"
+      },
+      "energy_level_4": {
+        "name": "Energy Level 4"
+      },
+      "hours_level_1": {
+        "name": "Operating Hours Level 1"
+      },
+      "hours_level_2": {
+        "name": "Operating Hours Level 2"
+      },
+      "hours_level_3": {
+        "name": "Operating Hours Level 3"
+      },
+      "hours_level_4": {
+        "name": "Operating Hours Level 4"
+      },
+      "hours_frost": {
+        "name": "Frost Protection Hours"
+      },
+      "hours_preheater": {
+        "name": "Pre-heater Hours"
+      },
       "filter_total_days": {
-        "name": "Filter total lifetime"
+        "name": "Filter Total Lifetime"
       },
       "filter_residual_days": {
-        "name": "Filter remaining lifetime"
-      }
-    },
-    "select": {
-      "language": {
-        "name": "Language",
-        "state": {
-          "Deutsch": "German",
-          "English": "English",
-          "Francais": "French",
-          "Italiano": "Italian",
-          "Nederlands": "Dutch"
-        }
+        "name": "Filter Remaining Lifetime"
       },
-      "program_control": {
-        "name": "Control mode",
-        "state": {
-          "Manual": "Manual",
-          "Program": "Program"
-        }
+      "heat_recovery_efficiency": {
+        "name": "Heat Recovery Efficiency"
+      },
+      "heat_recovery_watts": {
+        "name": "Recovered Heat Output"
+      },
+      "current_level_text": {
+        "name": "Current Level"
+      },
+      "party_timer": {
+        "name": "Party Timer Remaining"
+      },
+      "bypass_status": {
+        "name": "Bypass Status"
+      },
+      "system_message": {
+        "name": "System Message"
       }
     },
     "binary_sensor": {
+      "filter_ok": {
+        "name": "Filter Status"
+      },
+      "safety_manager": {
+        "name": "Safety Manager"
+      },
+      "passivhaus_modus": {
+        "name": "Passive House Mode"
+      },
+      "vorheizregister_aktiv": {
+        "name": "Pre-heater Active"
+      },
       "digital_input_1": {
         "name": "Digital Input 1"
       },
@@ -107,9 +175,86 @@
       },
       "digital_input_3": {
         "name": "Digital Input 3"
+      },
+      "frost_risk": {
+        "name": "Frost Risk"
+      },
+      "bypass_leaking": {
+        "name": "Bypass Leaking"
+      },
+      "motor_asymmetry": {
+        "name": "Motor Asymmetry"
+      },
+      "bypass_recommended": {
+        "name": "Bypass Pre-cooling Recommended"
       }
     },
-    "number": {}
+    "number": {
+      "party_timer_nachlauf": {
+        "name": "Party Timer Duration"
+      },
+      "bypass_schwelle_aussenluft": {
+        "name": "Bypass Threshold Outdoor"
+      },
+      "bypass_schwelle_abluft": {
+        "name": "Bypass Threshold Exhaust"
+      },
+      "kalibrierung_abluft": {
+        "name": "Exhaust Temp Correction"
+      },
+      "kalibrierung_zuluft": {
+        "name": "Supply Temp Correction"
+      },
+      "kalibrierung_fortluft": {
+        "name": "Extract Temp Correction"
+      },
+      "kalibrierung_aussenluft": {
+        "name": "Outdoor Temp Correction"
+      }
+    },
+    "select": {
+      "bypass_select": {
+        "name": "Bypass Control",
+        "state": {
+          "Manuell offen": "Manual Open",
+          "Manuell zu": "Manual Closed",
+          "Automatisch": "Automatic"
+        }
+      },
+      "install_type": {
+        "name": "Building Type",
+        "state": {
+          "Eigenheim": "Single Family",
+          "Mietwohnung": "Apartment"
+        }
+      },
+      "preheater_mode": {
+        "name": "Pre-heater Mode",
+        "state": {
+          "Aktiv": "Active",
+          "Passiv": "Passive"
+        }
+      },
+      "safety_mode": {
+        "name": "Safety Manager",
+        "state": {
+          "Mit": "Enabled",
+          "Ohne": "Disabled"
+        }
+      },
+      "ext_sensor_type_1": {
+        "name": "External Sensor 1 Type"
+      },
+      "ext_sensor_type_2": {
+        "name": "External Sensor 2 Type"
+      },
+      "ext_sensor_type_3": {
+        "name": "External Sensor 3 Type"
+      },
+      "ext_sensor_type_4": {
+        "name": "External Sensor 4 Type"
+      }
+    }
   },
   "issues": {
     "filter_needs_replacement": {
@@ -118,8 +263,42 @@
         "step": {
           "confirm": {
             "title": "Filter replaced?",
-            "description": "Please replace the KWL filter and confirm. The alarm will be automatically acknowledged on the device."
+            "description": "Replace the filter and confirm. The alarm will be acknowledged on the device automatically."
           }
+        }
+      }
+    },
+    "annual_maintenance_due": {
+      "title": "KWL annual maintenance due",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Maintenance completed?",
+            "description": "The KWL has accumulated over 8760 operating hours. Annual maintenance (motors, heat exchanger, seals) is recommended. Confirm when done."
+          }
+        }
+      }
+    },
+    "bypass_leaking": {
+      "title": "KWL bypass may be leaking",
+      "description": "The bypass appears to be leaking — extract air temperature is close to outdoor temperature despite the bypass being closed. Have the bypass damper inspected."
+    },
+    "motor_asymmetry": {
+      "title": "KWL motor asymmetry detected",
+      "description": "Supply and exhaust motor RPM differ by more than 15%. This may indicate motor wear or a one-sided filter blockage. Check filters and motors."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Adjust polling interval and power consumption per level.",
+        "data": {
+          "scan_interval": "Poll interval (seconds)",
+          "watt_level_1": "Level 1 – Moisture Protection (W)",
+          "watt_level_2": "Level 2 – Reduced (W)",
+          "watt_level_3": "Level 3 – Nominal Ventilation (W)",
+          "watt_level_4": "Level 4 – Intensive Ventilation (W)"
         }
       }
     }

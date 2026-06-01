@@ -1,96 +1,119 @@
 # Changelog
 
-Alle wichtigen Änderungen an dieser Integration werden in dieser Datei dokumentiert.
+All notable changes to this project will be documented in this file.
 
-Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
-Die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
+---
+
+## [1.3.0] - 2026-05-31
+
+This release consolidates all work since v1.2.0 into a single coherent release.
+The version jump from 1.2 reflects genuine feature additions; intermediate patch
+versions (1.3–1.5) have been collapsed here as they were primarily bugfixes
+that should never have been separate minor versions.
+
+### Added
+
+**New entities**
+- `binary_sensor.kwl_frost_risiko` — frost risk for heat exchanger (Außenluft < -5°C and Zuluft < 5°C)
+- `binary_sensor.kwl_bypass_leckage` — bypass leakage detected from temperature delta (disabled by default)
+- `binary_sensor.kwl_motor_asymmetrie` — motor RPM asymmetry > 15%, sign of wear (disabled by default)
+- `binary_sensor.kwl_bypass_vorkuehlung_empfohlen` — bypass pre-cooling currently beneficial
+- `binary_sensor.kwl_digital_input_1/2/3` — physical digital inputs (disabled by default)
+- `sensor.kwl_waermerueckgewinnungsgrad` — heat recovery efficiency η in %, with force_update
+- `sensor.kwl_rueckgewonnene_waermeleistung` — recovered heat output in W
+
+**Repair Issues**
+- `filter_needs_replacement` — already present, now also deleted when resolved
+- `annual_maintenance_due` — fires after 8760 operating hours, fixable, deleted after confirmation
+- `bypass_leaking` — fires after 3 consecutive positive polls (prevents false alarms)
+- `motor_asymmetry` — fires after 3 consecutive positive polls
+
+**Configuration**
+- Options Flow — poll interval (30–300 s) and watt values adjustable after setup without reinstalling
+- `async_migrate_entry` — automatically migrates v1 Config Entries to v2 (adds missing watt values)
+- `CONFIG_FLOW VERSION = 2`
+
+**Code quality**
+- `entity_category` CONFIG/DIAGNOSTIC on all relevant entities
+- Complete EN + DE translations — all entities, options, repair issues
+- Minimum XML tag validation — `UpdateFailed` on partial response
+- `KWLWattSensor` subclass — clean separation of watt_map-dependent sensors
+- 218 automated tests (up from 161 in v1.2.0)
+
+### Fixed
+
+**Bugs that would have caused runtime errors**
+- Setup order in `__init__.py`: `runtime_data` now set before `async_setup()` — previously could cause `AttributeError` if time sync timer fired before runtime_data was available
+- `button.py`: `await _get_session()` → `_get_session()` — would have raised `TypeError` on every button press
+- `button.py`: `RuntimeError` → `HomeAssistantError`
+- `fan.py`: `data.control_mode` → `data.program_control` — would have raised `AttributeError` on every dashboard refresh
+- All 7 derived binary sensors were never added to the `BINARY_SENSORS` tuple — they simply did not exist in HA despite being in translations and coordinator
+
+**Correctness**
+- `reconfigure_flow`: now uses `{**entry.data, ...}` — previously overwrote watt values on IP/auth change
+- `annual_maintenance_due` Repair Issue: now deleted when hours drop below threshold and after confirmation
+- `bypass_leaking`/`motor_asymmetry` Repair Issues: 3-poll threshold prevents false alarms on measurement spikes
+- `repairs.py`: `self.issue_data` → `self.data` (correct RepairsFlow attribute)
+- `entity_category` type: `str | None` → `EntityCategory | None` in all dataclasses
+- Exhaust airflow entities: correct `required_tag` per sensor (e.g. `st1a` not `st1z`)
+- Dead Translation keys `language`/`program_control` in select removed
+- Broken "adaptive polling" removed — `update_interval` was set and immediately reset with no effect
+
+**Code hygiene**
+- `async_close_session`: dead code removed
+- `DOMAIN`: unused import in `binary_sensor.py` removed
+- `safety_active`, `passive_mode`, `preheater_active`: `entity_category=DIAGNOSTIC` added
+- `_is_supported`: `getattr` replaced with direct Protocol access
+- `unknown_tags`: logged only once after Discovery, not on every poll
+- Heat recovery η guard reduced from 3.0 K to 1.5 K (summer measurements were returning None)
+- `SCAN_INTERVAL` dead constant removed from coordinator
+- Docstring-after-code in `_async_sync_time` fixed
+- Duplicate `control_mode`/`program_control` property removed
+- Dead comment blocks from removed features cleaned up
+- `"Außenluft"` umlaut corrected in number.py
+- `"Nennlueftung"`/`"Intensivlueftung"` corrected (was double-e)
+- `_LOGGER` added to `__init__.py`
 
 ---
 
 ## [1.2.0] - 2026-05-22
 
-### Added — Firmware v2 Support
-- **Digital inputs** — DiIn1/2/3 as binary sensors (disabled by default)
-  Useful if physical inputs (door contacts, CO2 sensors, occupancy) are wired to the KWL
-- **All 155 langtxt UI strings** added to ALL_KNOWN_TAGS — no more unknown tag warnings
-- **All new firmware v2 tags** (prg*, soze, time, date, events, PassivHE/PassivHA, sensor0)
-  added to ALL_KNOWN_TAGS — zero unknown tags logged after firmware update
-
-### Not implemented (deliberately)
-- Scheduler programs (prg1–prg10): read-only from status.xml, no write endpoint.
-  Use HA automations instead — more powerful and already documented
-- PassivHE/PassivHA: rarely-changed installer values, no operational value
-- soze/time/date/events: diagnostic only, redundant with existing sensors
-
-### Changed
-- ALL_KNOWN_TAGS extended with 200+ new firmware v2 tags
-- 161 tests — cleaned up after feature scope reduction
-- manifest.json version bumped to 1.2.0
+### Added
+- Digital inputs DiIn1/2/3 as binary sensors (disabled by default)
+- All firmware v2 tags (prg1–prg10, soze, time, date, events, langtxt0–154 etc.)
+  added to ALL_KNOWN_TAGS — zero unknown tag warnings after firmware update
 
 ---
 
 ## [1.1.0] - 2026-05-21
 
 ### Added
-- **Capability Discovery** — automatically detects supported features on first poll
-  - Reads available XML tags from `status.xml`
-  - Probes `/install/install.htm`, `/time.htm`, `/wopla.htm` in parallel
-  - Only creates entities for features the firmware actually supports
-  - Works with all Profi-Air firmware versions (Touch, non-Touch, old, new)
-- **`required_tag` / `required_endpoint`** on all EntityDescriptions
-  - Motor sensors only created if `MoStZlUm` tag present
-  - Temperature corrections only if `kor1` tag present
-  - Installer entities only if `/install/install.htm` reachable
-  - Program control only if `/wopla.htm` reachable
-- **Unknown tag detection** — new firmware tags logged with GitHub issue link
-- **Diagnostics extended** — full capabilities report including available tags,
-  reachable endpoints, unknown tags and feature flags
-- **34 new capability tests** — full and minimal firmware fixtures
-
-### Changed
-- Time sync silently skipped if `/time.htm` not reachable
-- `async_post_install` raises `HomeAssistantError` if installer not reachable
-- `manifest.json` version bumped to `1.1.0`
-
-### Fixed
-- All 6 platforms now filter entities by capabilities at setup time
+- **Capability Discovery** — automatically detects what your firmware supports on first startup
+- No unavailable entities for features the firmware does not expose
+- Unknown XML tags logged with direct GitHub issue link
+- `required_tag` / `required_endpoint` per EntityDescription
+- Two firmware fixtures in tests (full / minimal)
+- Profi-Air 250 Touch / 400 Touch explicitly supported and documented
 
 ---
 
-## [1.0.0] - 2026-05-19
+## [1.0.0] - 2026-05-20
 
-### Hinzugefügt
-- Lüftungsstufen 1–4 als Fan-Entity mit Prozent-Schieberegler und Preset-Modi
-- Automatische Zeitsynchronisation (Start + alle 24 h) inkl. Sommer-/Winterzeit
-- Energie-Dashboard: kumulativer kWh-Verbrauch pro Stufe (basierend auf Betriebsstunden)
-- Vollständiges Sensor-Mapping: Temperaturen, Motor-RPM, Motorspannung, Wärmerückgewinnung
-- Bypass-Steuerung: Manuell offen / Manuell zu / Automatisch
-- Temperaturkorrekturen für alle vier Messfühler (±4.9 °C)
-- Luftmengen-Konfiguration pro Stufe (Experten, standardmäßig deaktiviert)
-- Haustyp, Vorheizregister, Safety Manager über Select-Entities konfigurierbar
-- Ext. Sensor-Typen (Feuchte %H / CO2 ppm) konfigurierbar
-- HTTP Basic Auth für den Installateur-Bereich
-- Optimistic Updates — UI reagiert sofort ohne Wartezeit
-- Re-Auth Flow bei abgelaufenen Zugangsdaten (ConfigEntryAuthFailed)
-- Reconfigure Flow — IP und Zugangsdaten ohne Neueinrichtung änderbar
-- Konfigurierbare Nennleistung pro Stufe im Setup-Wizard (Standardwerte: 11/17.5/43.5/80 W)
-- Diagnostics mit automatischem Redacting sensitiver Daten
-- Repair Issue für Filterwechsel-Alarm mit automatischer Quittierung
-- 117 automatisierte Tests (Unit + Config Flow)
-- Vollständige Übersetzungen: Deutsch und Englisch
-- HACS-kompatibel mit GitHub Actions CI (HACS Validation + Hassfest)
-- Quality Scale: 🏆 Platinum
-
-### Technische Details
-- `entry.runtime_data` Pattern (HA 2024.4+)
-- `async_get_clientsession(hass)` statt eigener aiohttp Session
-- `DataUpdateCoordinator` mit `config_entry=entry` (HA 2025.11 Deadline)
-- `@dataclass(frozen=True, kw_only=True)` für alle EntityDescriptions (HA 2025.1+)
-- `PARALLEL_UPDATES` konfiguriert: 1 für schreibende, 0 für lesende Plattformen
-- Minimale HA-Version: 2026.3
-
----
-
-## [Unveröffentlicht]
-
-Keine ausstehenden Änderungen.
+### Added
+- Initial release
+- Fan entity with levels 1–4, percentage slider and preset modes
+- Bypass control (Manual open / Manual closed / Automatic)
+- All four temperatures: exhaust, supply, outdoor, extract air
+- Motor RPM and voltage sensors
+- Current power (W) and cumulative energy per level (kWh) — Energy Dashboard ready
+- Filter status binary sensor + Repair Issue with one-click fix
+- Party timer, bypass thresholds, temperature corrections as number entities
+- House type, pre-heater, safety manager, external sensor types as select entities
+- Installer settings via HTTP Basic Auth (`/install/install.htm`)
+- Automatic time synchronisation incl. DST on startup and every 24 h
+- Optimistic updates — UI responds immediately without waiting for next poll
+- Re-auth flow, Reconfigure flow
+- Full translations DE + EN
+- Download diagnostics with auto-redacting
+- 161 automated tests
+- Quality Scale: Platinum

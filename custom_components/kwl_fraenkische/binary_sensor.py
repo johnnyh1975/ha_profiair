@@ -1,4 +1,4 @@
-"""Binary Sensor-Entities fuer die KWL-Lueeftungsanlage."""
+"""Binary Sensor-Entities fuer die KWL-Lüftungsanlage."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,10 +16,10 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 0
@@ -30,6 +30,7 @@ class KWLBinarySensorDescription(BinarySensorEntityDescription):
     value_fn: Callable[[KWLData], bool | None] = lambda d: None
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
+    entity_category: EntityCategory | None = field(default=None)
 
 
 BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
@@ -41,6 +42,7 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
     ),
     KWLBinarySensorDescription(
         key="safety_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
         required_tag="safety",
         name="Safety Manager",
         device_class=BinarySensorDeviceClass.SAFETY,
@@ -48,6 +50,7 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
     ),
     KWLBinarySensorDescription(
         key="passive_mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
         required_tag="passiv",
         name="Passivhaus-Modus",
         device_class=BinarySensorDeviceClass.RUNNING,
@@ -55,10 +58,81 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
     ),
     KWLBinarySensorDescription(
         key="preheater_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
         required_tag="vorheiz",
         name="Vorheizregister aktiv",
         device_class=BinarySensorDeviceClass.HEAT,
         value_fn=lambda d: d.preheater_active,
+    ),
+
+    # ── Diagnose Binary Sensoren ──────────────────────────────────────────────
+    KWLBinarySensorDescription(
+        key="digital_input_1",
+        name="Digitaleingang 1",
+        icon="mdi:electric-switch",
+        required_tag="DiIn1",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.digital_input_1,
+    ),
+    KWLBinarySensorDescription(
+        key="digital_input_2",
+        name="Digitaleingang 2",
+        icon="mdi:electric-switch",
+        required_tag="DiIn2",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.digital_input_2,
+    ),
+    KWLBinarySensorDescription(
+        key="digital_input_3",
+        name="Digitaleingang 3",
+        icon="mdi:electric-switch",
+        required_tag="DiIn3",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.digital_input_3,
+    ),
+
+    # ── Safety / Passiv / Vorheiz (entity_category ergaenzen) ─────────────────
+    # (bereits im Tuple -- entity_category ergaenzen via Dataclass field)
+
+    # ── Derived Binary Sensoren ──────────────────────────────────────────────
+    KWLBinarySensorDescription(
+        key="frost_risk",
+        name="Frost-Risiko",
+        device_class=BinarySensorDeviceClass.COLD,
+        icon="mdi:snowflake-alert",
+        required_tag="aul0",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.frost_risk,
+    ),
+    KWLBinarySensorDescription(
+        key="bypass_leaking",
+        name="Bypass Leckage",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:valve-open",
+        required_tag="fol0",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.bypass_leaking,
+    ),
+    KWLBinarySensorDescription(
+        key="motor_asymmetry",
+        name="Motor Asymmetrie",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:fan-alert",
+        required_tag="MoStZlUm",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.motor_asymmetry,
+    ),
+    KWLBinarySensorDescription(
+        key="bypass_recommended",
+        name="Bypass Vorkuehlung empfohlen",
+        icon="mdi:thermometer-chevron-down",
+        required_tag="aul0",
+        value_fn=lambda d: d.bypass_recommended,
     ),
 )
 

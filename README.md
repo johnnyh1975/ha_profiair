@@ -3,9 +3,9 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
 [![Quality Scale](https://img.shields.io/badge/Quality%20Scale-Platinum-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale/)
-[![Tests](https://img.shields.io/badge/Tests-161%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
+[![Tests](https://img.shields.io/badge/Tests-218%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.3.0-blue.svg)](CHANGELOG.md)
 
 Local-only Home Assistant integration for **Fränkische Rohrwerke Profi-Air** ventilation units. No cloud, no external services — talks directly to your KWL over HTTP, the same way the built-in web interface does.
 
@@ -25,6 +25,13 @@ Local-only Home Assistant integration for **Fränkische Rohrwerke Profi-Air** ve
 - [Entities](#entities)
 - [Energy Dashboard](#energy-dashboard)
 - [Automation examples](#automation-examples)
+  - [Summer night pre-cooling](#1--summer-night-pre-cooling-complete-production-ready)
+  - [Summer morning close](#2--summer-morning-close-combined)
+  - [Bypass recommendation sensor](#3--bypass-pre-cooling-recommended-sensor)
+  - [Presence-aware ventilation](#4--presence-aware-ventilation)
+  - [Heat recovery efficiency alert](#5--heat-recovery-efficiency-alert)
+  - [Frost risk protection](#6--frost-risk-protection)
+  - [DWD forecast sensor](#dwd-forecast-sensor)
 - [Feature comparison](#feature-comparison)
 - [Troubleshooting](#troubleshooting)
 - [HTTP endpoints](#http-endpoints-reference)
@@ -206,10 +213,10 @@ Entities marked *(firmware)* are only created if your device's firmware exposes 
 |--------|-------|----|---------------|
 | `Stufe 1 - Feuchteschutz` | 1 | 25% | 11 W |
 | `Stufe 2 - Reduziert` | 2 | 50% | 17.5 W |
-| `Stufe 3 - Nennlueeftung` | 3 | 75% | 43.5 W |
-| `Stufe 4 - Intensivlueeftung` | 4 | 100% | 80 W |
+| `Stufe 3 - Nennlueftung` | 3 | 75% | 43.5 W |
+| `Stufe 4 - Intensivlueftung` | 4 | 100% | 80 W |
 
-> ⚠️ Use `Nennlueeftung` not `Nennlüftung` — no umlauts in preset names.
+> ⚠️ Use `Nennlueftung` not `Nennlüftung` — no umlauts in preset names.
 
 ### Sensors
 | Suffix | Description | Unit | Firmware |
@@ -225,6 +232,8 @@ Entities marked *(firmware)* are only created if your device's firmware exposes 
 | `_aktuelle_stufe` | Current level (text) | — | all |
 | `_bypass_status` | Bypass status | — | all |
 | `_systemmeldung` | System message | — | all |
+| `_waermerueckgewinnungsgrad` | Heat recovery efficiency | % | if supported |
+| `_rueckgewonnene_waermeleistung` | Recovered heat output | W | if supported |
 | `_party_timer_restzeit` | Party timer remaining | min | all |
 | `_zuluft_motor_u_min` | Supply motor RPM | rpm | if supported |
 | `_abluft_motor_u_min` | Exhaust motor RPM | rpm | if supported |
@@ -245,6 +254,11 @@ Entities marked *(firmware)* are only created if your device's firmware exposes 
 | `_safety_manager` | Safety manager active | if supported |
 | `_passivhaus_modus` | Passive house mode active | if supported |
 | `_vorheizregister_aktiv` | Pre-heater active | if supported |
+| `_frost_risiko` | Frost risk for heat exchanger | if supported |
+| `_bypass_leckage` | Bypass leaking detected | if supported, disabled by default |
+| `_motor_asymmetrie` | Motor RPM asymmetry > 15% | if supported, disabled by default |
+| `_bypass_vorkuehlung_empfohlen` | Bypass pre-cooling recommended | if supported |
+| `_digital_input_1..3` | Digital inputs (physical wiring) | if supported, disabled by default |
 | `_digital_input_1` | Digital Input 1 (physical wiring) | if supported, disabled by default |
 | `_digital_input_2` | Digital Input 2 (physical wiring) | if supported, disabled by default |
 | `_digital_input_3` | Digital Input 3 (physical wiring) | if supported, disabled by default |
@@ -295,89 +309,279 @@ HA automatically sums daily and monthly totals. Combined with the operating hour
 
 ## Automation examples
 
-### Increase ventilation on high CO2
-```yaml
-automation:
-  triggers:
-    - trigger: numeric_state
-      entity_id: sensor.co2_living_room
-      above: 1000
-  actions:
-    - action: fan.set_preset_mode
-      target:
-        entity_id: fan.kwl_fraenkische_rohrwerke
-      data:
-        preset_mode: "Stufe 3 - Nennlueeftung"
-```
+The integration exposes entities that HA automations can use directly — no polling, no templates unless needed. All examples below use the correct HA 2024.8+ syntax (`triggers:`, `actions:`, `action:` instead of `service:`).
 
-### Summer night pre-cooling (bypass + level 3)
+---
+
+### Helpers required
+
+Create these helpers once in **Settings → Devices & Services → Helpers**:
+
+| Helper | Type | Suggested value |
+|--------|------|----------------|
+| `input_number.kwl_bypass_delta_schwelle` | Number | 2 (°C delta Außen/Innen) |
+| `input_number.kwl_bypass_hitze_schwelle` | Number | 28 (°C Vorhersage-Schwelle) |
+
+---
+
+### 1 — Summer night pre-cooling (complete, production-ready)
+
+Opens bypass and sets level 3 when pre-cooling makes sense. Closes again at 07:45 to ensure the 10-minute stability timer cannot slip past 08:00.
+
+**Requires:** `sensor.dwd_tagesmax_temperatur_morgen` — see [DWD template sensor](#dwd-forecast-sensor) below.
+
 ```yaml
-automation:
-  alias: "KWL Summer Night Cooling"
-  triggers:
-    - trigger: time
-      at: "22:00:00"
-  conditions:
-    - condition: numeric_state
-      entity_id: sensor.kwl_fraenkische_rohrwerke_abluft_temperatur
-      above: 22
-    - condition: template
-      value_template: >
-        {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') | float(0)
-           < states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0) - 2 }}
-    - condition: numeric_state
-      entity_id: sensor.dwd_tagesmax_temperatur_morgen
-      above: input_number.kwl_bypass_hitze_schwelle
-  actions:
-    - action: select.select_option
-      target:
+alias: KWL Bypass Sommer-Kühlung
+description: >
+  Öffnet Bypass nachts wenn Vorkühlung sinnvoll ist.
+  Alle Schwellen über Helfer in der UI einstellbar.
+triggers:
+  - trigger: template
+    value_template: >
+      {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') | float(0)
+         < states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0)
+           - states('input_number.kwl_bypass_delta_schwelle') | float(0) }}
+    for: "00:10:00"
+  - trigger: time
+    at: "22:00:00"
+conditions:
+  - condition: time
+    after: "22:00:00"
+    before: "07:45:00"
+  - condition: numeric_state
+    entity_id: sensor.kwl_fraenkische_rohrwerke_abluft_temperatur
+    above: 22
+  - condition: template
+    value_template: >
+      {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') | float(0)
+         < states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0)
+           - states('input_number.kwl_bypass_delta_schwelle') | float(0) }}
+  - condition: numeric_state
+    entity_id: sensor.dwd_tagesmax_temperatur_morgen
+    above: input_number.kwl_bypass_hitze_schwelle
+  - not:
+      - condition: state
         entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-      data:
-        option: "Manuell offen"
-    - action: fan.set_preset_mode
-      target:
-        entity_id: fan.kwl_fraenkische_rohrwerke
-      data:
-        preset_mode: "Stufe 3 - Nennlueeftung"
+        state: Manuell offen
+actions:
+  - action: select.select_option
+    target:
+      entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
+    data:
+      option: Manuell offen
+  - action: fan.set_preset_mode
+    target:
+      entity_id: fan.kwl_fraenkische_rohrwerke
+    data:
+      preset_mode: "Stufe 3 - Nennlueftung"
+mode: single
 ```
 
-### Morning — close bypass, reduce to level 1
+**Why these conditions?**
+- `for: "00:10:00"` — 10-minute stability filter prevents false triggers from short temperature spikes
+- `before: "07:45:00"` — 15-minute buffer before 08:00 ensures the timer cannot fire after morning close
+- `dwd_tagesmax_temperatur_morgen above 28` — only pre-cool when tomorrow will actually be hot
+- `not: Manuell offen` — idempotent, prevents duplicate triggers
+
+---
+
+### 2 — Summer morning close (combined)
+
+Closes bypass if open and drops to level 1. Both cases (bypass was open / was already closed) handled in one automation.
+
 ```yaml
-automation:
-  alias: "KWL Summer Morning"
-  triggers:
-    - trigger: time
-      at: "08:00:00"
-  conditions:
-    - condition: template
-      value_template: "{{ now().month in [5, 6, 7, 8, 9] }}"
-  actions:
-    - action: select.select_option
-      target:
+alias: KWL Sommer Morgen
+description: >
+  Jeden Sommermorgen um 08:00: Bypass schließen (falls offen) und auf Stufe 1.
+triggers:
+  - trigger: time
+    at: "08:00:00"
+conditions:
+  - condition: numeric_state
+    entity_id: sensor.kwl_fraenkische_rohrwerke_abluft_temperatur
+    above: 20
+actions:
+  - if:
+      - condition: state
         entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-      data:
-        option: "Automatisch"
-    - action: fan.set_preset_mode
-      target:
-        entity_id: fan.kwl_fraenkische_rohrwerke
-      data:
-        preset_mode: "Stufe 1 - Feuchteschutz"
+        state: Manuell offen
+    then:
+      - action: select.select_option
+        target:
+          entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
+        data:
+          option: Automatisch
+  - action: fan.set_preset_mode
+    target:
+      entity_id: fan.kwl_fraenkische_rohrwerke
+    data:
+      preset_mode: "Stufe 1 - Feuchteschutz"
+mode: single
 ```
 
-### Filter replacement notification
+**Why no month condition?** The `abluft_temperatur above 20` condition is a better proxy than `now().month in [5..9]` — it handles warm October days correctly and skips the close on cold summer mornings when it already ran idle.
+
+---
+
+### 3 — Bypass pre-cooling recommended sensor
+
+Since v1.3.0 the integration calculates `binary_sensor.kwl_bypass_vorkuehlung_empfohlen` directly. Use it as a simpler trigger:
+
 ```yaml
-automation:
-  triggers:
-    - trigger: state
-      entity_id: binary_sensor.kwl_fraenkische_rohrwerke_filter_ok
-      to: "on"
-  actions:
-    - action: notify.mobile_app
-      data:
-        message: "KWL: Filter replacement needed!"
+alias: KWL Bypass öffnen wenn empfohlen
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.kwl_fraenkische_rohrwerke_bypass_vorkuehlung_empfohlen
+    to: "on"
+    for: "00:10:00"
+conditions:
+  - condition: time
+    after: "22:00:00"
+    before: "07:45:00"
+  - condition: numeric_state
+    entity_id: sensor.dwd_tagesmax_temperatur_morgen
+    above: input_number.kwl_bypass_hitze_schwelle
+actions:
+  - action: select.select_option
+    target:
+      entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
+    data:
+      option: Manuell offen
+  - action: fan.set_preset_mode
+    target:
+      entity_id: fan.kwl_fraenkische_rohrwerke
+    data:
+      preset_mode: "Stufe 3 - Nennlueftung"
+mode: single
 ```
 
-> **Tip:** Instead of this automation, use the built-in **Repair Issue** — HA shows a persistent notification with a one-click fix that automatically acknowledges the alert on the device.
+---
+
+### 4 — Presence-aware ventilation
+
+Drop to minimum when nobody is home, return to normal when someone arrives.
+
+```yaml
+alias: KWL Anwesenheitssteuerung
+triggers:
+  - trigger: state
+    entity_id: group.alle_personen
+    to: "not_home"
+  - trigger: state
+    entity_id: group.alle_personen
+    from: "not_home"
+actions:
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: group.alle_personen
+            state: not_home
+        sequence:
+          - action: fan.set_preset_mode
+            target:
+              entity_id: fan.kwl_fraenkische_rohrwerke
+            data:
+              preset_mode: "Stufe 1 - Feuchteschutz"
+      - conditions:
+          - condition: state
+            entity_id: group.alle_personen
+            state: home
+        sequence:
+          - action: fan.set_preset_mode
+            target:
+              entity_id: fan.kwl_fraenkische_rohrwerke
+            data:
+              preset_mode: "Stufe 2 - Reduziert"
+mode: single
+```
+
+---
+
+### 5 — Heat recovery efficiency alert
+
+React to the `heat_recovery_efficiency` sensor dropping below 65% — sign of a dirty filter or leaking bypass.
+
+```yaml
+alias: KWL Wärmerückgewinnung niedrig
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.kwl_fraenkische_rohrwerke_waermerueckgewinnungsgrad
+    below: 65
+    for: "02:00:00"
+actions:
+  - action: notify.mobile_app_dein_handy
+    data:
+      title: "KWL Wärmerückgewinnung niedrig"
+      message: >
+        Aktuell {{ states('sensor.kwl_fraenkische_rohrwerke_waermerueckgewinnungsgrad') }}%.
+        Filter prüfen oder Wärmetauscher reinigen.
+mode: single
+```
+
+---
+
+### 6 — Frost risk protection
+
+Reduce to level 1 when frost risk is detected to protect the heat exchanger.
+
+```yaml
+alias: KWL Frostschutz
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.kwl_fraenkische_rohrwerke_frost_risiko
+    to: "on"
+    for: "00:05:00"
+actions:
+  - action: fan.set_preset_mode
+    target:
+      entity_id: fan.kwl_fraenkische_rohrwerke
+    data:
+      preset_mode: "Stufe 1 - Feuchteschutz"
+  - action: notify.mobile_app_dein_handy
+    data:
+      title: "KWL Frostschutz aktiv"
+      message: >
+        Außenluft {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') }}°C,
+        Zuluft {{ states('sensor.kwl_fraenkische_rohrwerke_zuluft_temperatur') }}°C.
+        Lüftung auf Stufe 1 reduziert.
+mode: single
+```
+
+---
+
+### DWD forecast sensor
+
+Required for automations 1–3. Uses FL550 hourly data from `sensor.nuernberg_temperatur`.
+
+```yaml
+template:
+  - sensor:
+      - name: "DWD Tagesmax Temperatur Morgen"
+        unique_id: dwd_tagesmax_temperatur_morgen
+        state: >
+          {% set data = state_attr('sensor.nuernberg_temperatur', 'data') %}
+          {% set morgen = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set werte = data | selectattr('datetime', 'search', morgen)
+                              | map(attribute='value') | list %}
+          {{ werte | max | float(0) if werte else 0 }}
+        unit_of_measurement: "°C"
+        state_class: measurement
+```
+
+Adjust `sensor.nuernberg_temperatur` to your DWD station. Find the entity name under **Developer Tools → States** and filter by `nuernberg` or your city.
+
+---
+
+### Preset mode names (exact strings for automations)
+
+| Preset | Level | % | Default W |
+|--------|-------|---|-----------|
+| `Stufe 1 - Feuchteschutz` | 1 | 25% | 11.0 |
+| `Stufe 2 - Reduziert` | 2 | 50% | 17.5 |
+| `Stufe 3 - Nennlueftung` | 3 | 75% | 43.5 |
+| `Stufe 4 - Intensivlueftung` | 4 | 100% | 80.0 |
+
+> ⚠️ Note the spelling: `Nennlueftung` and `Intensivlueftung` — single `e`, no umlaut. These are the internal API names used in automations. HA displays them with the correct umlaut in the UI via translations.
 
 ---
 
@@ -466,8 +670,8 @@ Preset names must match exactly — no umlauts:
 ```
 Stufe 1 - Feuchteschutz
 Stufe 2 - Reduziert
-Stufe 3 - Nennlueeftung
-Stufe 4 - Intensivlueeftung
+Stufe 3 - Nennlueftung
+Stufe 4 - Intensivlueftung
 ```
 Verify: **Developer Tools → States → `fan.kwl_fraenkische_rohrwerke`** → attribute `preset_modes`
 
@@ -510,37 +714,29 @@ Probed endpoints are tested once on startup (3 s timeout). If unreachable, they 
 
 ## Changelog
 
+### v1.3.0 (2026-05-31)
+- 7 new binary sensors: frost risk, bypass leakage, motor asymmetry, bypass recommendation, digital inputs 1–3
+- 2 new sensors: heat recovery efficiency (η %), recovered heat output (W)
+- Repair Issues for bypass leakage and motor asymmetry (3-poll threshold)
+- Annual maintenance Repair Issue (> 8760 operating hours)
+- Options Flow — poll interval (30–300 s) and watt values adjustable after setup
+- `async_migrate_entry` — automatic v1→v2 migration
+- `entity_category` CONFIG/DIAGNOSTIC on all entities
+- Complete EN + DE translations for all entities
+- Minimum XML tag validation
+- Fixed: setup order, `await _get_session()`, `control_mode`, all derived sensors registered
+- Fixed: reconfigure preserves watt values, annual maintenance issue deleted after confirmation
+- Fixed: 3-poll threshold for defect repair issues
+- 218 automated tests
+
 ### v1.2.0 (2026-05-22)
 - Digital inputs DiIn1/2/3 as binary sensors (disabled by default)
-- All firmware v2 tags (prg1–prg10, soze, time, date, events, langtxt0–154 etc.) added to known tags — zero unknown tag warnings after firmware update
-- 161 automated tests
+- All firmware v2 tags added to ALL_KNOWN_TAGS — zero unknown tag warnings
 
 ### v1.1.0 (2026-05-21)
-- **Capability Discovery** — automatic detection of supported features on first poll
-- **Firmware-adaptive entities** — only entities for features your device actually supports
-- `required_tag` / `required_endpoint` on all EntityDescriptions
-- Parallel endpoint probing on startup (3 s timeout, zero overhead in normal operation)
-- Unknown firmware tags logged and shown in diagnostics
-- Diagnostics extended with full capability report
-- Time sync and installer access silently skipped if endpoint not reachable
-- 34 new capability tests — 151 total
+- Capability Discovery — automatic detection of firmware features
+- No unavailable entities for unsupported features
+- Unknown tags logged with GitHub issue link
 
 ### v1.0.0 (2026-05-20)
 - Initial release
-- Ventilation levels 1–4 as fan entity with percentage and preset modes
-- Full sensor mapping — temperatures, motor data, filter lifetime, energy
-- Language selection and program/manual control mode
-- Bypass control, temperature corrections, airflow calibration
-- Automatic time synchronisation with DST
-- HTTP Basic Auth for installer area
-- Re-auth and reconfigure flows
-- Configurable nominal power per level in setup wizard
-- Repair issue for filter replacement with automatic acknowledgement
-- Diagnostics with sensitive data redaction
-- 117 automated tests, Quality Scale: 🏆 Platinum
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE)

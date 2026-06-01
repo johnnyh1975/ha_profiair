@@ -54,6 +54,24 @@ async def async_get_config_entry_diagnostics(
             if coordinator.update_interval
             else None,
         },
+        "options": {
+            "scan_interval": entry.options.get("scan_interval", 30),
+            "watt_map": coordinator.watt_map,
+        },
+        "derived_state": {
+            "heat_recovery_efficiency": coordinator.data.heat_recovery_efficiency
+            if coordinator.data else None,
+            "heat_recovery_watts": coordinator.data.heat_recovery_watts
+            if coordinator.data else None,
+            "bypass_leaking": coordinator.data.bypass_leaking
+            if coordinator.data else None,
+            "motor_asymmetry": coordinator.data.motor_asymmetry
+            if coordinator.data else None,
+            "bypass_recommended": coordinator.data.bypass_recommended
+            if coordinator.data else None,
+            "frost_risk": coordinator.data.frost_risk
+            if coordinator.data else None,
+        },
         "capabilities": {
             "available_tags": sorted(coordinator.capabilities.available_tags)
             if coordinator.capabilities else None,

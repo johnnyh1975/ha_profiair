@@ -6,13 +6,14 @@ from xml.etree import ElementTree
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
 from .const import (
-    CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2,
+    CONF_SCAN_INTERVAL, CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2,
     CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
-    DEFAULT_WATT, DOMAIN,
+    DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
+    DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL,
 )
 
 DEFAULT_HOST = "10.10.4.1"
@@ -39,7 +40,7 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     Schritt 2 -- Installateur-Zugangsdaten eingeben und pruefen
     """
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         self._host: str = ""
@@ -142,6 +143,11 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         )
 
 
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Erstellt den Options Flow fuer diese Config Entry."""
+        return KWLOptionsFlow(config_entry)
+
     async def async_step_reauth(
         self, entry_data: dict
     ) -> ConfigFlowResult:
@@ -208,9 +214,12 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
                 if error:
                     errors["base"] = error
                 else:
+                    # Bestehende entry.data beibehalten (Watt-Werte etc.)
+                    # Nur geaenderte Felder ueberschreiben
                     self.hass.config_entries.async_update_entry(
                         entry,
                         data={
+                            **entry.data,
                             CONF_HOST: host,
                             "mac": result["mac"],
                             CONF_USERNAME: user_input[CONF_USERNAME],
@@ -233,6 +242,62 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             data_schema=schema,
             errors=errors,
         )
+
+
+class KWLOptionsFlow(OptionsFlow):
+    """Options Flow fuer konfigurierbare Parameter nach dem Setup.
+
+    Erlaubt Aenderung von:
+    - Poll-Intervall (30-300 Sekunden)
+    - Nennleistung pro Stufe (fuer korrekte Energieberechnung)
+    """
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Einziger Schritt -- alle Optionen auf einer Seite."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        # Aktuelle Werte als Defaults
+        current = self._entry.options
+        data = self._entry.data
+
+        schema = vol.Schema({
+            vol.Required(
+                CONF_SCAN_INTERVAL,
+                default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+            ),
+            vol.Required(
+                CONF_WATT_LEVEL_1,
+                default=current.get(CONF_WATT_LEVEL_1,
+                    data.get(CONF_WATT_LEVEL_1, DEFAULT_WATT[1])),
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
+            vol.Required(
+                CONF_WATT_LEVEL_2,
+                default=current.get(CONF_WATT_LEVEL_2,
+                    data.get(CONF_WATT_LEVEL_2, DEFAULT_WATT[2])),
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
+            vol.Required(
+                CONF_WATT_LEVEL_3,
+                default=current.get(CONF_WATT_LEVEL_3,
+                    data.get(CONF_WATT_LEVEL_3, DEFAULT_WATT[3])),
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
+            vol.Required(
+                CONF_WATT_LEVEL_4,
+                default=current.get(CONF_WATT_LEVEL_4,
+                    data.get(CONF_WATT_LEVEL_4, DEFAULT_WATT[4])),
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
+        })
+
+        return self.async_show_form(step_id="init", data_schema=schema)
+
 
 async def _fetch_device_info(host: str) -> dict | str:
     """Prueft Erreichbarkeit und liest MAC aus status.xml."""

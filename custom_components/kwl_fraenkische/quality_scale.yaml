@@ -83,9 +83,14 @@ rules:
     comment: async_step_reauth_confirm implementiert, ConfigEntryAuthFailed geworfen.
   test-coverage:
     status: done
-    comment: 109 Unit-Tests fuer coordinator, fan, select, sensor.
+    comment: >-
+      179+ Unit-Tests fuer coordinator, fan, select, sensor, capabilities,
+      derived properties und binary sensors.
 
   # ── Gold ────────────────────────────────────────────────────────────────
+  options-flow:
+    status: done
+    comment: OptionsFlow erlaubt Poll-Intervall und Watt-Werte nachtraeglich zu aendern.
   devices:
     status: done
     comment: Alle Entities gehoeren zu einem Device mit MAC als Identifier.

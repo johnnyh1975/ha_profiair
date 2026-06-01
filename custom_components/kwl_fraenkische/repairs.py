@@ -1,8 +1,4 @@
-"""Repair Issues fuer die KWL Fraenkische Rohrwerke Integration.
-
-Erstellt actionable Repair Issues in der HA UI wenn der Filter
-gewechselt werden muss oder andere Probleme auftreten.
-"""
+"""Repair Issues fuer die KWL Fraenkische Rohrwerke Integration."""
 from __future__ import annotations
 
 import logging
@@ -12,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
 from . import KWLConfigEntry
 from .const import DOMAIN
@@ -27,7 +24,18 @@ async def async_create_fix_flow(
     """Erstellt den passenden Fix-Flow fuer ein Repair Issue."""
     if issue_id == "filter_needs_replacement":
         return FilterRepairFlow()
+    if issue_id == "annual_maintenance_due":
+        return AnnualMaintenanceRepairFlow()
     return ConfirmRepairFlow()
+
+
+def _get_coordinator(hass: HomeAssistant, data: dict | None) -> Any | None:
+    """Hilfsfunktion: Coordinator aus entry_id holen."""
+    entry_id = (data or {}).get("entry_id")
+    if not entry_id:
+        return None
+    entry = hass.config_entries.async_get_entry(entry_id)
+    return entry.runtime_data if entry else None
 
 
 class FilterRepairFlow(RepairsFlow):
@@ -35,28 +43,23 @@ class FilterRepairFlow(RepairsFlow):
 
     Fuehrt den Nutzer durch:
     1. Filter tatsaechlich wechseln
-    2. Alarm am Geraet quittieren via button.kwl_filterfehler_bestaetigen
+    2. Alarm am Geraet quittieren via filter.cgi
     """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Erster Schritt -- Nutzer bestaetigt dass Filter gewechselt wurde."""
         return await self.async_step_confirm()
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         if user_input is not None:
-            # Alarm am Geraet quittieren
-            # entry_id wird in data mitgegeben beim async_create_issue Aufruf
-            entry_id = (self.issue_data or {}).get("entry_id")
-            entry = (
-                self.hass.config_entries.async_get_entry(entry_id)
-                if entry_id else None
+            coordinator = _get_coordinator(
+                self.hass,
+                self.data if hasattr(self, "data") else None,
             )
-            if entry:
-                coordinator = entry.runtime_data
+            if coordinator:
                 try:
                     url = f"http://{coordinator.host}/filter.cgi?filter=1"
                     session = coordinator._get_session()
@@ -65,12 +68,58 @@ class FilterRepairFlow(RepairsFlow):
                     await coordinator.async_request_refresh()
                     _LOGGER.info("KWL Filterwechsel-Alarm quittiert")
                 except Exception as err:
-                    _LOGGER.warning("Fehler beim Quittieren: %s", err)
+                    _LOGGER.warning("Fehler beim Quittieren des Filteralarms: %s", err)
 
+            ir.async_delete_issue(self.hass, DOMAIN, "filter_needs_replacement")
             return self.async_create_entry(data={})  # type: ignore[no-any-return]
 
         return cast(dict[str, Any], self.async_show_form(
             step_id="confirm",
             data_schema=vol.Schema({}),
-            description_placeholders={},
+        ))
+
+
+class AnnualMaintenanceRepairFlow(RepairsFlow):
+    """Repair Flow fuer die Jahreswartungs-Erinnerung.
+
+    Setzt _maintenance_acknowledged=True auf dem Coordinator damit
+    das Issue nicht beim naechsten Poll sofort wieder erscheint.
+    Das Flag bleibt gesetzt bis die Integration neu gestartet wird
+    (nach einem Jahr laeuft der Zaehler ohnehin weiter).
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return await self.async_step_confirm()
+
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        if user_input is not None:
+            coordinator = _get_coordinator(
+                self.hass,
+                self.data if hasattr(self, "data") else None,
+            )
+            if coordinator:
+                # Schwellenwert anheben -- naechste Warnung erst in weiteren 8760h
+                from .coordinator import ANNUAL_MAINTENANCE_HOURS
+                current = sum(filter(None, [
+                    coordinator.data.hours_level_1 if coordinator.data else None,
+                    coordinator.data.hours_level_2 if coordinator.data else None,
+                    coordinator.data.hours_level_3 if coordinator.data else None,
+                    coordinator.data.hours_level_4 if coordinator.data else None,
+                ]))
+                coordinator._maintenance_next_threshold = current + ANNUAL_MAINTENANCE_HOURS
+                _LOGGER.info(
+                    "KWL Jahreswartung quittiert -- naechste Warnung bei %.0f Betriebsstunden",
+                    coordinator._maintenance_next_threshold,
+                )
+
+            ir.async_delete_issue(self.hass, DOMAIN, "annual_maintenance_due")
+            return self.async_create_entry(data={})  # type: ignore[no-any-return]
+
+        return cast(dict[str, Any], self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
         ))

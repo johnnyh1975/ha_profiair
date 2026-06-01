@@ -17,6 +17,7 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -44,6 +45,7 @@ class KWLNumberDescription(NumberEntityDescription):
     entity_registry_enabled_default: bool = True
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
+    entity_category: EntityCategory | None = field(default=None)
 
 
 def _two_digits(v: float) -> str:
@@ -76,7 +78,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     ),
     KWLNumberDescription(
         key="bypass_threshold_aul",
-        name="Bypass Schwelle Aussenluft",
+        name="Bypass Schwelle Außenluft",
         device_class=NumberDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         native_min_value=13,
@@ -155,7 +157,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     KWLNumberDescription(
         key="korrektur_aussenluft",
         required_tag="kor4",
-        name="Kalibrierung Aussenluft",
+        name="Kalibrierung Außenluft",
         device_class=NumberDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         native_min_value=-4.9,
@@ -191,7 +193,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     ),
     KWLNumberDescription(
         key="airflow_s1_exhaust",
-        required_tag="st1z",
+        required_tag="st1a",
         name="Luftmenge Stufe 1 Abluft",
         device_class=NumberDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -223,7 +225,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     ),
     KWLNumberDescription(
         key="airflow_s2_exhaust",
-        required_tag="st1z",
+        required_tag="st2a",
         name="Luftmenge Stufe 2 Abluft",
         device_class=NumberDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -255,7 +257,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     ),
     KWLNumberDescription(
         key="airflow_s3_exhaust",
-        required_tag="st1z",
+        required_tag="st3a",
         name="Luftmenge Stufe 3 Abluft",
         device_class=NumberDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -287,7 +289,7 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
     ),
     KWLNumberDescription(
         key="airflow_s4_exhaust",
-        required_tag="st1z",
+        required_tag="st4a",
         name="Luftmenge Stufe 4 Abluft",
         device_class=NumberDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,

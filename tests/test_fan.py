@@ -95,7 +95,7 @@ class TestPresetModes:
         assert PRESET_MODES.get("Stufe 1 - Feuchteschutz") == 1
 
     def test_stufe4_preset_name(self):
-        assert PRESET_MODES.get("Stufe 4 - Intensivlueeftung") == 4
+        assert PRESET_MODES.get("Stufe 4 - Intensivlueftung") == 4
 
 
 class TestWattMapping:

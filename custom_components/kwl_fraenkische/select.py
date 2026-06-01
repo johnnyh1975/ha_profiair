@@ -12,6 +12,7 @@ from typing import Callable
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -63,6 +64,7 @@ class KWLSelectDescription(SelectEntityDescription):
     entity_registry_enabled_default: bool = True
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
+    entity_category: EntityCategory | None = field(default=None)
 
 
 def _setup_url(host: str) -> str:
@@ -93,6 +95,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     # Haustyp -- install.htm
     KWLSelectDescription(
         key="install_type",
+        entity_category=EntityCategory.CONFIG,
         name="Haustyp",
         icon="mdi:home",
         options=["Eigenheim", "Mietwohnung"],
@@ -106,6 +109,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     # Vorheizregister -- install.htm
     KWLSelectDescription(
         key="preheater_mode",
+        entity_category=EntityCategory.CONFIG,
         name="Vorheizregister Modus",
         icon="mdi:heating-coil",
         options=["Aktiv", "Passiv"],
@@ -119,6 +123,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     # Safety Manager -- install.htm
     KWLSelectDescription(
         key="safety_mode",
+        entity_category=EntityCategory.CONFIG,
         name="Safety Manager",
         icon="mdi:shield-check",
         options=["Mit", "Ohne"],
@@ -131,6 +136,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     # Externe Sensoren Typ 1-4 -- install.htm
     KWLSelectDescription(
         key="ext_sensor_type_1",
+        entity_category=EntityCategory.CONFIG,
         name="Ext. Sensor 1 Typ",
         icon="mdi:thermometer-lines",
         options=["Keiner", "Feuchte (%H)", "CO2 (ppm)"],
@@ -142,6 +148,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     ),
     KWLSelectDescription(
         key="ext_sensor_type_2",
+        entity_category=EntityCategory.CONFIG,
         name="Ext. Sensor 2 Typ",
         icon="mdi:thermometer-lines",
         options=["Keiner", "Feuchte (%H)", "CO2 (ppm)"],
@@ -153,6 +160,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     ),
     KWLSelectDescription(
         key="ext_sensor_type_3",
+        entity_category=EntityCategory.CONFIG,
         name="Ext. Sensor 3 Typ",
         icon="mdi:thermometer-lines",
         options=["Keiner", "Feuchte (%H)", "CO2 (ppm)"],
@@ -164,6 +172,7 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
     ),
     KWLSelectDescription(
         key="ext_sensor_type_4",
+        entity_category=EntityCategory.CONFIG,
         name="Ext. Sensor 4 Typ",
         icon="mdi:thermometer-lines",
         options=["Keiner", "Feuchte (%H)", "CO2 (ppm)"],

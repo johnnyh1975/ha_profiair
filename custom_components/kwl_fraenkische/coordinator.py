@@ -21,10 +21,13 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ALL_KNOWN_TAGS,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ENDPOINT_INSTALL,
     ENDPOINT_TIME,
     ENDPOINT_WOPLA,
+    REQUIRED_XML_TAGS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -110,16 +113,18 @@ class _SupportedDesc(Protocol):
 
 def _is_supported(desc: _SupportedDesc, caps: KWLCapabilities) -> bool:
     """True wenn EntityDescription von dieser Firmware unterstuetzt wird."""
-    if getattr(desc, "required_tag", None) and desc.required_tag not in caps.available_tags:
+    if desc.required_tag and desc.required_tag not in caps.available_tags:
         return False
-    if getattr(desc, "required_endpoint", None) and desc.required_endpoint not in caps.reachable_endpoints:
+    if desc.required_endpoint and desc.required_endpoint not in caps.reachable_endpoints:
         return False
     return True
 
 
 
-SCAN_INTERVAL = timedelta(seconds=30)
+# SCAN_INTERVAL wird nicht mehr direkt genutzt -- Wert kommt aus entry.options
+# Default: DEFAULT_SCAN_INTERVAL aus const.py
 TIME_SYNC_INTERVAL = timedelta(hours=24)
+ANNUAL_MAINTENANCE_HOURS = 8760  # 1 Jahr in Stunden
 
 
 def _parse_float(value: str | None) -> float | None:
@@ -358,19 +363,114 @@ class KWLData:
     def digital_input_3(self) -> bool:
         return (self._raw.get("DiIn3", "Aus").strip().lower() == "ein")
 
-    # ── Passive Heat Recovery Thresholds ──────────────────────────────
-
-    # ── DST / Time Status ─────────────────────────────────────────────
-
-    # ── Scheduler (prg1-10) ───────────────────────────────────────────
-
-    @property
-    def control_mode(self) -> str:
-        return self._raw.get("control0", "").strip()
 
     @property
     def bypass_status(self) -> str:
         return self._raw.get("bypass", "").strip()
+
+    # ── Derived / Diagnostic Properties ─────────────────────────────────
+
+    @property
+    def heat_recovery_efficiency(self) -> float | None:
+        """Waermerueckgewinnungsgrad eta in Prozent.
+
+        eta = (T_zuluft - T_aussen) / (T_abluft - T_aussen) * 100
+
+        Typisch: 75-85% bei sauberer Anlage.
+        Unter 65% dauerhaft: Filter oder Waermetauscher reinigen.
+        Nur sinnvoll wenn T_abluft - T_aussen > 3 K (sonst Division durch kleine Zahlen).
+        """
+        t_ab = self.temp_abluft
+        t_zu = self.temp_zuluft
+        t_au = self.temp_aussenluft
+        if t_ab is None or t_zu is None or t_au is None:
+            return None
+        delta = t_ab - t_au
+        if delta < 1.5:
+            return None  # Temperaturdifferenz zu klein fuer sinnvolle Berechnung
+        return round((t_zu - t_au) / delta * 100, 1)
+
+    @property
+    def heat_recovery_watts(self) -> float | None:
+        """Zurueckgewonnene Waermeleistung in Watt.
+
+        Q = 0.34 [Wh/m3K] * Volumenstrom [m3/h] * (T_abluft - T_zuluft) [K]
+        Volumenstrom wird aus T_abluft - T_zuluft und Motorspannungen geschaetzt.
+        Vereinfachte Berechnung: fixer Volumenstrom 300 m3/h (Stufe 3 Nennwert).
+        """
+        t_ab = self.temp_abluft
+        t_zu = self.temp_zuluft
+        if t_ab is None or t_zu is None:
+            return None
+        delta = t_ab - t_zu
+        if delta <= 0:
+            return None
+        volumenstrom = {1: 100, 2: 180, 3: 300, 4: 400}.get(self.current_level, 300)
+        return round(0.34 * volumenstrom * delta, 0)
+
+    @property
+    def frost_risk(self) -> bool:
+        """True wenn Frost-Risiko fuer den Waermetauscher besteht.
+
+        Kriterium: Aussenluft < -5 C UND Zuluft < 5 C.
+        """
+        t_au = self.temp_aussenluft
+        t_zu = self.temp_zuluft
+        if t_au is None or t_zu is None:
+            return False
+        return t_au < -5.0 and t_zu < 5.0
+
+    @property
+    def bypass_leaking(self) -> bool:
+        """True wenn Bypass-Leckage vermutet wird.
+
+        Wenn der Bypass geschlossen sein soll aber Fortlufttemperatur
+        fast identisch mit Aussenlufttemperatur ist, leakt die Klappe.
+        Kriterium: Bypass nicht offen UND |T_fort - T_aussen| < 2 K.
+        Nur aktiv wenn T_abluft - T_aussen > 5 K (Heizbetrieb).
+        """
+        if "offen" in self.bypass_status.lower():
+            return False  # Bypass soll offen sein -- kein Defekt
+        t_fort = self.temp_fortluft
+        t_au = self.temp_aussenluft
+        t_ab = self.temp_abluft
+        if t_fort is None or t_au is None or t_ab is None:
+            return False
+        if t_ab - t_au < 5.0:
+            return False  # Temperaturdifferenz zu klein fuer Erkennung
+        return abs(t_fort - t_au) < 2.0
+
+    @property
+    def motor_asymmetry(self) -> bool:
+        """True wenn Motorasymmetrie > 15% erkannt wird.
+
+        Grosse RPM-Differenz bei gleicher Stufe deutet auf
+        Motorverschleiss oder einseitig verstopften Filter hin.
+        """
+        rpm_zu = self.motor_zuluft_rpm
+        rpm_ab = self.motor_abluft_rpm
+        if rpm_zu is None or rpm_ab is None or rpm_zu == 0:
+            return False
+        asymmetrie = abs(rpm_zu - rpm_ab) / rpm_zu
+        return asymmetrie > 0.15
+
+    @property
+    def bypass_recommended(self) -> bool:
+        """True wenn Bypass-Vorkuehlung gerade sinnvoll waere.
+
+        Kriterium: Aussenluft mindestens 2 K kuehler als Abluft
+        UND Abluft > 22 C (Haus warm genug zum Vorkuehlen)
+        UND Aussenluft > 10 C (kein Frost-Risiko).
+        """
+        t_au = self.temp_aussenluft
+        t_ab = self.temp_abluft
+        if t_au is None or t_ab is None:
+            return False
+        return (
+            t_au < t_ab - 2.0
+            and t_ab > 22.0
+            and t_au > 10.0
+        )
 
     @property
     def filter_ok(self) -> bool:
@@ -462,12 +562,19 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         self._install_auth = aiohttp.BasicAuth(username, password)
         self._status_url = f"http://{host}/status.xml"
         self._unsub_time_sync = None
+        self.capabilities: KWLCapabilities | None = None
+        self._bypass_leak_count: int = 0
+        self._motor_asym_count: int = 0
+        # Naechste Wartungswarnung erst wenn Betriebsstunden diesen Wert ueberschreiten
+        # Wird beim Quittieren auf aktuelle Stunden + 8760 gesetzt
+        self._maintenance_next_threshold: float = ANNUAL_MAINTENANCE_HOURS
 
+        scan_seconds = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         super().__init__(
             hass,
             _LOGGER,
             name="KWL Fraenkische Rohrwerke",
-            update_interval=SCAN_INTERVAL,
+            update_interval=timedelta(seconds=scan_seconds),
             config_entry=entry,
         )
         # HA-verwaltete Session -- wird automatisch mit HA lifecycle verwaltet
@@ -505,14 +612,15 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         await self._async_sync_time()
 
     async def _async_sync_time(self) -> None:
-        if self.capabilities and not self.capabilities.has_time_sync:
-            _LOGGER.debug("Zeitsync nicht verfuegbar -- Endpunkt nicht erreichbar")
-            return
         """Sendet die aktuelle HA-Systemzeit und DST-Status an die KWL.
 
         Verwendet die HA-Zeitzone (dt_util.now()) damit Sommer-/Winterzeit
         korrekt aus der konfigurierten HA-Zeitzone abgeleitet wird.
+        Wird uebersprungen wenn /time.htm nicht erreichbar ist.
         """
+        if self.capabilities and not self.capabilities.has_time_sync:
+            _LOGGER.debug("Zeitsync nicht verfuegbar -- Endpunkt nicht erreichbar")
+            return
         now = dt_util.now()  # timezone-aware, in der HA-Zeitzone
         time_payload = _build_time_payload(now)
         dst_payload = _build_dst_payload(now)
@@ -577,7 +685,7 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
                 url, timeout=aiohttp.ClientTimeout(total=3)
             ) as resp:
                 return resp.status != 404
-        except Exception:
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
             return False
 
     def async_teardown(self) -> None:
@@ -586,9 +694,6 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
             self._unsub_time_sync()
             self._unsub_time_sync = None
 
-    async def async_close_session(self) -> None:
-        """HA-Session wird von HA verwaltet -- nichts zu tun."""
-        pass
 
     async def _async_update_data(self) -> KWLData:
         try:
@@ -607,6 +712,13 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         except ElementTree.ParseError as err:
             raise UpdateFailed(f"Ungueltiges XML von der KWL: {err}") from err
 
+        # Minimalvalidierung -- Pflicht-Tags muessen vorhanden sein
+        missing = REQUIRED_XML_TAGS - frozenset(raw.keys())
+        if missing:
+            raise UpdateFailed(
+                f"Unvollstaendige XML-Antwort vom Geraet -- fehlende Tags: {missing}"
+            )
+
         data = KWLData(raw)
 
         # Repair Issue fuer Filterwechsel
@@ -623,17 +735,67 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         else:
             ir.async_delete_issue(self.hass, DOMAIN, "filter_needs_replacement")
 
+        # Repair Issue fuer Jahreswartung
+        # _maintenance_acknowledged wird in repairs.py gesetzt wenn Nutzer quittiert
+        # Verhindert dass das Issue nach Quittierung sofort wieder erscheint
+        total_hours = sum(filter(None, [
+            data.hours_level_1, data.hours_level_2,
+            data.hours_level_3, data.hours_level_4,
+        ]))
+        if total_hours > self._maintenance_next_threshold:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                "annual_maintenance_due",
+                is_fixable=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="annual_maintenance_due",
+                data={"entry_id": self.config_entry.entry_id,
+                      "hours": total_hours},
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, "annual_maintenance_due")
+
+        # Repair Issues fuer Geraetedefekte -- erst nach 3 aufeinanderfolgenden Polls
+        # verhindert Fehlalarme bei kurzen Messwertschwankungen (z.B. Motorstart)
+        _DEFECT_THRESHOLD = 3
+
+        if data.bypass_leaking:
+            self._bypass_leak_count += 1
+        else:
+            self._bypass_leak_count = 0
+            ir.async_delete_issue(self.hass, DOMAIN, "bypass_leaking")
+        if self._bypass_leak_count >= _DEFECT_THRESHOLD:
+            ir.async_create_issue(
+                self.hass, DOMAIN, "bypass_leaking",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="bypass_leaking",
+            )
+
+        if data.motor_asymmetry:
+            self._motor_asym_count += 1
+        else:
+            self._motor_asym_count = 0
+            ir.async_delete_issue(self.hass, DOMAIN, "motor_asymmetry")
+        if self._motor_asym_count >= _DEFECT_THRESHOLD:
+            ir.async_create_issue(
+                self.hass, DOMAIN, "motor_asymmetry",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="motor_asymmetry",
+            )
+
         # Discovery beim ersten Poll
         if self.capabilities is None:
             await self._discover_capabilities(raw)
 
-        # unknown_tags loggen
-        unknown = frozenset(raw.keys()) - ALL_KNOWN_TAGS
-        if unknown:
+        # unknown_tags nur einmal nach Discovery loggen
+        if self.capabilities is not None and self.capabilities.unknown_tags:
             _LOGGER.info(
                 "Unbekannte XML-Tags gefunden (neue Firmware?): %s -- "
                 "Bitte GitHub Issue eroeffnen: https://github.com/johnnyh1975/ha_profiair400/issues",
-                sorted(unknown)
+                sorted(self.capabilities.unknown_tags)
             )
 
         return data
@@ -644,7 +806,7 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
 
     async def async_set_level(self, level: int) -> None:
         if level not in (1, 2, 3, 4):
-            raise HomeAssistantError(f"Ungueltige Lueeftungsstufe: {level}")
+            raise HomeAssistantError(f"Ungueltige Lüftungsstufe: {level}")
         url = f"http://{self.host}/stufe.cgi?stufe={level}"
         try:
             session = self._get_session()

@@ -143,6 +143,9 @@ mocks = {
     'homeassistant.helpers.aiohttp_client': MagicMock(),
     'homeassistant.helpers.event': MagicMock(),
     'homeassistant.helpers.device_registry': MagicMock(DeviceInfo=dict),
+    'homeassistant.helpers.entity': MagicMock(
+        EntityCategory=MagicMock(CONFIG='config', DIAGNOSTIC='diagnostic'),
+    ),
     'homeassistant.helpers.issue_registry': MagicMock(
         IssueSeverity=MagicMock(WARNING='warning'),
         async_create_issue=MagicMock(),

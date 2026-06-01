@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "KWL Fraenkische Rohrwerke einrichten",
+        "title": "KWL Fränkische Rohrwerke einrichten",
         "description": "Gib die IP-Adresse deiner KWL-Anlage ein.",
         "data": {
           "host": "IP-Adresse"
@@ -10,7 +10,7 @@
       },
       "auth": {
         "title": "Installateur-Zugangsdaten",
-        "description": "Zugangsdaten fuer den Installateur-Bereich von {host}.\nWerkseinstellung: Benutzer 'install', Passwort 'konfig12'.\nAus Sicherheitsgruenden empfehlen wir das Passwort am Geraet zu aendern.",
+        "description": "Zugangsdaten für den Installateur-Bereich von {host}.\nWerkseinstellung: Benutzer `install`, Passwort `konfig12`.\nBitte das Passwort am Gerät ändern.",
         "data": {
           "username": "Benutzername",
           "password": "Passwort"
@@ -18,7 +18,7 @@
       },
       "reauth_confirm": {
         "title": "Zugangsdaten erneuern",
-        "description": "Die Authentifizierung für {host} ist fehlgeschlagen. Bitte neue Zugangsdaten eingeben.",
+        "description": "Authentifizierung für {host} fehlgeschlagen. Neue Zugangsdaten eingeben.",
         "data": {
           "username": "Benutzername",
           "password": "Passwort"
@@ -26,7 +26,7 @@
       },
       "reconfigure": {
         "title": "KWL neu konfigurieren",
-        "description": "Ändere IP-Adresse oder Zugangsdaten.",
+        "description": "IP-Adresse oder Zugangsdaten ändern.",
         "data": {
           "host": "IP-Adresse",
           "username": "Benutzername",
@@ -35,18 +35,18 @@
       },
       "watt": {
         "title": "Nennleistung pro Stufe",
-        "description": "Gib die gemessene Leistungsaufnahme deiner KWL pro Lüftungsstufe ein. Die Standardwerte gelten für die Profi-Air 400.",
+        "description": "Gemessene Leistungsaufnahme pro Lüftungsstufe eingeben. Standardwerte gelten für die Profi-Air 400.",
         "data": {
-          "watt_level_1": "Stufe 1 – Feuchteschutz (Watt)",
-          "watt_level_2": "Stufe 2 – Reduziert (Watt)",
-          "watt_level_3": "Stufe 3 – Nennlüftung (Watt)",
-          "watt_level_4": "Stufe 4 – Intensivlüftung (Watt)"
+          "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
+          "watt_level_2": "Stufe 2 – Reduziert (W)",
+          "watt_level_3": "Stufe 3 – Nennlüftung (W)",
+          "watt_level_4": "Stufe 4 – Intensivlüftung (W)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Verbindung zur KWL nicht moeglich. Pruefe IP-Adresse und Netzwerk.",
-      "invalid_response": "Unerwartete Antwort -- ist das eine KWL von Fraenkische Rohrwerke?",
+      "cannot_connect": "Verbindung zur KWL nicht möglich. IP-Adresse und Netzwerk prüfen.",
+      "invalid_response": "Unerwartete Antwort – ist das eine KWL von Fränkische Rohrwerke?",
       "invalid_auth": "Benutzername oder Passwort falsch."
     },
     "abort": {
@@ -58,17 +58,201 @@
   "entity": {
     "fan": {
       "kwl_fan": {
-        "name": "Lueeftung",
+        "name": "Lüftung",
         "state_attributes": {
           "preset_mode": {
             "state": {
-              "Stufe 1 - Feuchteschutz": "Stufe 1 - Feuchteschutz",
-              "Stufe 2 - Reduziert": "Stufe 2 - Reduziert",
-              "Stufe 3 - Nennlueeftung": "Stufe 3 - Nennlueeftung",
-              "Stufe 4 - Intensivlueeftung": "Stufe 4 - Intensivlueeftung"
+              "Stufe 1 - Feuchteschutz": "Stufe 1 – Feuchteschutz",
+              "Stufe 2 - Reduziert": "Stufe 2 – Reduziert",
+              "Stufe 3 - Nennlueftung": "Stufe 3 – Nennlüftung",
+              "Stufe 4 - Intensivlueftung": "Stufe 4 – Intensivlüftung"
             }
           }
         }
+      }
+    },
+    "sensor": {
+      "temp_abluft": {
+        "name": "Abluft Temperatur"
+      },
+      "temp_zuluft": {
+        "name": "Zuluft Temperatur"
+      },
+      "temp_aussenluft": {
+        "name": "Außenluft Temperatur"
+      },
+      "temp_fortluft": {
+        "name": "Fortluft Temperatur"
+      },
+      "motor_zuluft_rpm": {
+        "name": "Zuluft Motor U/min"
+      },
+      "motor_abluft_rpm": {
+        "name": "Abluft Motor U/min"
+      },
+      "motor_zuluft_volt": {
+        "name": "Zuluft Motor Spannung"
+      },
+      "motor_abluft_volt": {
+        "name": "Abluft Motor Spannung"
+      },
+      "power_current": {
+        "name": "Aktuelle Leistung"
+      },
+      "energy_level_1": {
+        "name": "Energie Stufe 1"
+      },
+      "energy_level_2": {
+        "name": "Energie Stufe 2"
+      },
+      "energy_level_3": {
+        "name": "Energie Stufe 3"
+      },
+      "energy_level_4": {
+        "name": "Energie Stufe 4"
+      },
+      "hours_level_1": {
+        "name": "Betriebsstunden Stufe 1"
+      },
+      "hours_level_2": {
+        "name": "Betriebsstunden Stufe 2"
+      },
+      "hours_level_3": {
+        "name": "Betriebsstunden Stufe 3"
+      },
+      "hours_level_4": {
+        "name": "Betriebsstunden Stufe 4"
+      },
+      "hours_frost": {
+        "name": "Betriebsstunden Frostschutz"
+      },
+      "hours_preheater": {
+        "name": "Betriebsstunden Vorheizregister"
+      },
+      "filter_total_days": {
+        "name": "Filter Gesamtlaufzeit"
+      },
+      "filter_residual_days": {
+        "name": "Filter Restlaufzeit"
+      },
+      "heat_recovery_efficiency": {
+        "name": "Wärmerückgewinnungsgrad"
+      },
+      "heat_recovery_watts": {
+        "name": "Rückgewonnene Wärmeleistung"
+      },
+      "current_level_text": {
+        "name": "Aktuelle Stufe"
+      },
+      "party_timer": {
+        "name": "Party-Timer Restzeit"
+      },
+      "bypass_status": {
+        "name": "Bypass Status"
+      },
+      "system_message": {
+        "name": "Systemmeldung"
+      }
+    },
+    "binary_sensor": {
+      "filter_ok": {
+        "name": "Filterstatus"
+      },
+      "safety_manager": {
+        "name": "Safety Manager"
+      },
+      "passivhaus_modus": {
+        "name": "Passivhaus-Modus"
+      },
+      "vorheizregister_aktiv": {
+        "name": "Vorheizregister aktiv"
+      },
+      "digital_input_1": {
+        "name": "Digitaleingang 1"
+      },
+      "digital_input_2": {
+        "name": "Digitaleingang 2"
+      },
+      "digital_input_3": {
+        "name": "Digitaleingang 3"
+      },
+      "frost_risk": {
+        "name": "Frost-Risiko"
+      },
+      "bypass_leaking": {
+        "name": "Bypass Leckage"
+      },
+      "motor_asymmetry": {
+        "name": "Motor Asymmetrie"
+      },
+      "bypass_recommended": {
+        "name": "Bypass Vorkühlung empfohlen"
+      }
+    },
+    "number": {
+      "party_timer_nachlauf": {
+        "name": "Party-Timer Dauer"
+      },
+      "bypass_schwelle_aussenluft": {
+        "name": "Bypass Schwelle Außenluft"
+      },
+      "bypass_schwelle_abluft": {
+        "name": "Bypass Schwelle Abluft"
+      },
+      "kalibrierung_abluft": {
+        "name": "Korrektur Abluft"
+      },
+      "kalibrierung_zuluft": {
+        "name": "Korrektur Zuluft"
+      },
+      "kalibrierung_fortluft": {
+        "name": "Korrektur Fortluft"
+      },
+      "kalibrierung_aussenluft": {
+        "name": "Korrektur Außenluft"
+      }
+    },
+    "select": {
+      "bypass_select": {
+        "name": "Bypass Steuerung",
+        "state": {
+          "Manuell offen": "Manuell offen",
+          "Manuell zu": "Manuell zu",
+          "Automatisch": "Automatisch"
+        }
+      },
+      "install_type": {
+        "name": "Haustyp",
+        "state": {
+          "Eigenheim": "Eigenheim",
+          "Mietwohnung": "Mietwohnung"
+        }
+      },
+      "preheater_mode": {
+        "name": "Vorheizregister Modus",
+        "state": {
+          "Aktiv": "Aktiv",
+          "Passiv": "Passiv"
+        }
+      },
+      "safety_mode": {
+        "name": "Safety Manager",
+        "state": {
+          "Mit": "Mit",
+          "Ohne": "Ohne"
+        }
+      },
+      "ext_sensor_type_1": {
+        "name": "Ext. Sensor 1 Typ"
+      },
+      "ext_sensor_type_2": {
+        "name": "Ext. Sensor 2 Typ"
+      },
+      "ext_sensor_type_3": {
+        "name": "Ext. Sensor 3 Typ"
+      },
+      "ext_sensor_type_4": {
+        "name": "Ext. Sensor 4 Typ"
       }
     }
   },
@@ -79,8 +263,42 @@
         "step": {
           "confirm": {
             "title": "Filter gewechselt?",
-            "description": "Bitte den Filter der KWL-Anlage wechseln und dann bestätigen. Der Alarm wird danach automatisch am Gerät quittiert."
+            "description": "Filter wechseln und bestätigen. Der Alarm wird automatisch am Gerät quittiert."
           }
+        }
+      }
+    },
+    "annual_maintenance_due": {
+      "title": "KWL Jahreswartung fällig",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Wartung durchgeführt?",
+            "description": "Die KWL hat über 8760 Betriebsstunden angesammelt. Jährliche Wartung (Motoren, Wärmetauscher, Dichtungen) empfohlen. Bestätigen wenn erledigt."
+          }
+        }
+      }
+    },
+    "bypass_leaking": {
+      "title": "KWL Bypass-Leckage erkannt",
+      "description": "Der Bypass scheint zu lecken — Fortlufttemperatur fast identisch mit Außenluft obwohl der Bypass geschlossen sein soll. Bypass-Klappe prüfen lassen."
+    },
+    "motor_asymmetry": {
+      "title": "KWL Motor-Asymmetrie erkannt",
+      "description": "Zuluft- und Abluftmotor-Drehzahl weichen mehr als 15% ab. Möglicher Motorverschleiß oder einseitig verstopfter Filter. Filter und Motoren prüfen."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Optionen",
+        "description": "Poll-Intervall und Nennleistung pro Stufe anpassen.",
+        "data": {
+          "scan_interval": "Poll-Intervall (Sekunden)",
+          "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
+          "watt_level_2": "Stufe 2 – Reduziert (W)",
+          "watt_level_3": "Stufe 3 – Nennlüftung (W)",
+          "watt_level_4": "Stufe 4 – Intensivlüftung (W)"
         }
       }
     }

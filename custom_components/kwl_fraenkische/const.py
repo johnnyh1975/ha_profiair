@@ -1,7 +1,7 @@
 """Konstanten für die KWL Fränkische Rohrwerke Integration."""
 DOMAIN = "kwl_fraenkische"
 
-# Nennleistung pro Lueeftungsstufe in Watt (gemessen)
+# Nennleistung pro Lüftungsstufe in Watt (gemessen)
 LEVEL_TO_WATT: dict[int, float] = {
     1: 11.0,
     2: 17.5,
@@ -69,3 +69,14 @@ ENDPOINT_TIME    = "/time.htm"
 ENDPOINT_WOPLA   = "/wopla.htm"
 ENDPOINT_SETUP   = "/setup.htm"
 ENDPOINT_STATUS  = "/status.xml"
+
+# Options Flow -- konfigurierbare Parameter
+CONF_SCAN_INTERVAL = "scan_interval"
+DEFAULT_SCAN_INTERVAL = 30  # Sekunden
+MIN_SCAN_INTERVAL = 30
+MAX_SCAN_INTERVAL = 300  # 5 Minuten
+
+# Pflicht-Tags die in jeder gueltigen status.xml-Antwort vorhanden sein muessen
+REQUIRED_XML_TAGS: frozenset[str] = frozenset({
+    "abl0", "zul0", "aul0", "stufe1",
+})

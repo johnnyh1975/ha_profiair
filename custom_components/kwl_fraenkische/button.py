@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 from dataclasses import dataclass, field
 
 import aiohttp
+from homeassistant.exceptions import HomeAssistantError
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -85,14 +86,14 @@ class KWLButton(CoordinatorEntity[KWLCoordinator], ButtonEntity):
         """GET-Request ausfuehren und danach Coordinator aktualisieren."""
         url = f"http://{self.coordinator.host}{self.entity_description.cgi_path}"
         try:
-            session = await self.coordinator._get_session()
+            session = self.coordinator._get_session()
             async with session.get(
                 url,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 resp.raise_for_status()
         except aiohttp.ClientError as err:
-            raise RuntimeError(
+            raise HomeAssistantError(
                 f"Fehler beim Ausfuehren von {self.entity_description.key}: {err}"
             ) from err
 
