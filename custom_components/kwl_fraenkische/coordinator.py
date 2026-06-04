@@ -438,7 +438,7 @@ class KWLData:
             return False
         if t_ab - t_au < 5.0:
             return False  # Temperaturdifferenz zu klein fuer Erkennung
-        return abs(t_fort - t_au) < 2.0
+        return abs(t_fort - t_au) < 4.0
 
     @property
     def motor_asymmetry(self) -> bool:
@@ -452,7 +452,7 @@ class KWLData:
         if rpm_zu is None or rpm_ab is None or rpm_zu == 0:
             return False
         asymmetrie = abs(rpm_zu - rpm_ab) / rpm_zu
-        return asymmetrie > 0.15
+        return asymmetrie > 0.25
 
     @property
     def bypass_recommended(self) -> bool:
@@ -760,7 +760,7 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
 
         # Repair Issues fuer Geraetedefekte -- erst nach 3 aufeinanderfolgenden Polls
         # verhindert Fehlalarme bei kurzen Messwertschwankungen (z.B. Motorstart)
-        _DEFECT_THRESHOLD = 3
+        _DEFECT_THRESHOLD = 10  # 10 x 30s = 5 Minuten stabile Anomalie
 
         if data.bypass_leaking:
             self._bypass_leak_count += 1

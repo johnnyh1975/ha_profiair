@@ -310,27 +310,36 @@ class TestDerivedProperties:
         assert data.bypass_leaking is False
 
     def test_bypass_leaking_true_when_fort_close_to_aussen(self):
+        """Fort-Aussen Delta < 4K bei genuiner Leckage."""
         d = KWLData({
             "bypass": "Man.: Zu",
-            "fol0": "15.1", "aul0": "15.0",
-            "abl0": "23.0",
+            "fol0": "17.0", "aul0": "15.0",  # delta 2K < 4K
+            "abl0": "23.0",                   # abluft-aussen = 8K > 5K
         })
         assert d.bypass_leaking is True
 
-    def test_bypass_leaking_false_when_small_delta(self):
-        """Bei kleiner Temperaturdifferenz keine Leckage-Erkennung."""
+    def test_bypass_leaking_false_when_delta_above_4k(self):
+        """Fort-Aussen Delta > 4K -- kein Leckage-Alarm."""
         d = KWLData({
             "bypass": "Man.: Zu",
-            "fol0": "15.1", "aul0": "15.0",
-            "abl0": "18.0",  # nur 3 K Differenz -- unter Schwelle
+            "fol0": "19.5", "aul0": "15.0",  # delta 4.5K > 4K
+            "abl0": "23.0",
+        })
+        assert d.bypass_leaking is False
+
+    def test_bypass_leaking_false_when_small_heizung_delta(self):
+        """Bei kleiner Temperaturdifferenz Abluft-Aussen keine Leckage-Erkennung."""
+        d = KWLData({
+            "bypass": "Man.: Zu",
+            "fol0": "17.0", "aul0": "15.0",
+            "abl0": "18.0",  # nur 3K Differenz -- unter 5K Schwelle
         })
         assert d.bypass_leaking is False
 
     def test_motor_asymmetry_false_normally(self, data):
-        """Sample XML: 2291 vs 1953 RPM -- ~15% Grenzfall."""
-        # Ergebnis hängt von exakten Werten ab
-        result = data.motor_asymmetry
-        assert isinstance(result, bool)
+        """Sample XML: 2291 vs 1953 RPM -- 14.8% unter 25% Schwelle -- kein Alarm."""
+        # |2291-1953|/2291 = 0.148 < 0.25
+        assert data.motor_asymmetry is False
 
     def test_motor_asymmetry_true_when_large_diff(self):
         d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1000"})
@@ -410,16 +419,16 @@ class TestDefectCounters:
         })
         assert d.bypass_leaking is False
 
-    def test_motor_asymmetry_boundary_exactly_15pct(self):
-        """Genau 15% Asymmetrie -- noch kein Alarm (> 15% required)."""
-        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1700"})
-        # |2000-1700|/2000 = 0.15 -- nicht > 0.15
+    def test_motor_asymmetry_boundary_exactly_25pct(self):
+        """Genau 25% Asymmetrie -- noch kein Alarm (> 25% required)."""
+        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1500"})
+        # |2000-1500|/2000 = 0.25 -- nicht > 0.25
         assert d.motor_asymmetry is False
 
     def test_motor_asymmetry_just_above_threshold(self):
-        """16% Asymmetrie -- Alarm."""
-        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1680"})
-        # |2000-1680|/2000 = 0.16 > 0.15
+        """26% Asymmetrie -- Alarm."""
+        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1480"})
+        # |2000-1480|/2000 = 0.26 > 0.25
         assert d.motor_asymmetry is True
 
     def test_motor_asymmetry_zero_rpm_no_crash(self):
