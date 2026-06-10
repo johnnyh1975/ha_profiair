@@ -10,10 +10,11 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
 from .const import (
-    CONF_SCAN_INTERVAL, CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2,
+    CONF_MODEL, CONF_SCAN_INTERVAL, CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2,
     CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
-    DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
+    DEFAULT_MODEL, DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
     DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL,
+    MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400, WATT_DEFAULTS,
 )
 
 DEFAULT_HOST = "10.10.4.1"
@@ -248,6 +249,7 @@ class KWLOptionsFlow(OptionsFlow):
     """Options Flow fuer konfigurierbare Parameter nach dem Setup.
 
     Erlaubt Aenderung von:
+    - Geraetemodell (profi-air 250 touch / profi-air 400 touch)
     - Poll-Intervall (30-300 Sekunden)
     - Nennleistung pro Stufe (fuer korrekte Energieberechnung)
     """
@@ -262,11 +264,18 @@ class KWLOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        # Aktuelle Werte als Defaults
         current = self._entry.options
         data = self._entry.data
 
+        # Aktuelles Modell -- bestimmt die Watt-Standardwerte
+        current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
+        model_watt_defaults = WATT_DEFAULTS.get(current_model, DEFAULT_WATT)
+
         schema = vol.Schema({
+            vol.Required(
+                CONF_MODEL,
+                default=current_model,
+            ): vol.In([MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400]),
             vol.Required(
                 CONF_SCAN_INTERVAL,
                 default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
@@ -277,22 +286,22 @@ class KWLOptionsFlow(OptionsFlow):
             vol.Required(
                 CONF_WATT_LEVEL_1,
                 default=current.get(CONF_WATT_LEVEL_1,
-                    data.get(CONF_WATT_LEVEL_1, DEFAULT_WATT[1])),
+                    data.get(CONF_WATT_LEVEL_1, model_watt_defaults[1])),
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
             vol.Required(
                 CONF_WATT_LEVEL_2,
                 default=current.get(CONF_WATT_LEVEL_2,
-                    data.get(CONF_WATT_LEVEL_2, DEFAULT_WATT[2])),
+                    data.get(CONF_WATT_LEVEL_2, model_watt_defaults[2])),
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
             vol.Required(
                 CONF_WATT_LEVEL_3,
                 default=current.get(CONF_WATT_LEVEL_3,
-                    data.get(CONF_WATT_LEVEL_3, DEFAULT_WATT[3])),
+                    data.get(CONF_WATT_LEVEL_3, model_watt_defaults[3])),
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
             vol.Required(
                 CONF_WATT_LEVEL_4,
                 default=current.get(CONF_WATT_LEVEL_4,
-                    data.get(CONF_WATT_LEVEL_4, DEFAULT_WATT[4])),
+                    data.get(CONF_WATT_LEVEL_4, model_watt_defaults[4])),
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
         })
 

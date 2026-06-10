@@ -1,7 +1,7 @@
 {
   "domain": "kwl_fraenkische",
   "name": "KWL Fr\u00e4nkische Rohrwerke",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "config_flow": true,
   "documentation": "https://github.com/johnnyh1975/ha-kwl-fraenkische",
   "issue_tracker": "https://github.com/johnnyh1975/ha-kwl-fraenkische/issues",

@@ -152,6 +152,42 @@
       },
       "system_message": {
         "name": "Systemmeldung"
+      },
+      "bypass_open_pct": {
+        "name": "Bypass Offen-Anteil"
+      },
+      "bypass_avg_open_min": {
+        "name": "Bypass Ø Offen-Dauer"
+      },
+      "bypass_transitions_1h": {
+        "name": "Bypass Wechsel letzte Stunde"
+      },
+      "night_cooling_last_k": {
+        "name": "Nachtlüftung letzter Kühlerfolg"
+      },
+      "night_cooling_7d_avg_k": {
+        "name": "Nachtlüftung Ø 7 Tage"
+      },
+      "eps_exhaust": {
+        "name": "WRG Abluftseite"
+      },
+      "energy_balance_ratio": {
+        "name": "Energiebilanz-Verhältnis"
+      },
+      "rpm_ratio": {
+        "name": "Motor RPM Verhältnis"
+      },
+      "analytics_maturity": {
+        "name": "Analytics Reifegrad"
+      },
+      "analytics_season": {
+        "name": "Analytics Saison"
+      },
+      "fan_law_max_deviation": {
+        "name": "Fanlaufgesetz Max-Abweichung"
+      },
+      "spi_stufe4": {
+        "name": "Spezifischer Leistungseintrag Stufe 4"
       }
     },
     "binary_sensor": {
@@ -187,6 +223,21 @@
       },
       "bypass_recommended": {
         "name": "Bypass Vorkühlung empfohlen"
+      },
+      "bypass_hunting": {
+        "name": "Bypass Pendeln"
+      },
+      "rpm_anomaly": {
+        "name": "Motor RPM Anomalie"
+      },
+      "ratio_anomaly": {
+        "name": "Motor Asymmetrie Trend"
+      },
+      "eta_below_baseline": {
+        "name": "WRG unter Referenzwert"
+      },
+      "fan_law_anomaly": {
+        "name": "Fanlaufgesetz Abweichung"
       }
     },
     "number": {
@@ -254,6 +305,17 @@
       "ext_sensor_type_4": {
         "name": "Ext. Sensor 4 Typ"
       }
+    },
+    "button": {
+      "filter_reset": {
+        "name": "Filterfehler bestätigen"
+      },
+      "sensor_toggle": {
+        "name": "Externe Sensoren umschalten"
+      },
+      "analytics_reset": {
+        "name": "Analytics Baselines zurücksetzen"
+      }
     }
   },
   "issues": {
@@ -285,20 +347,25 @@
     },
     "motor_asymmetry": {
       "title": "KWL Motor-Asymmetrie erkannt",
-      "description": "Zuluft- und Abluftmotor-Drehzahl weichen mehr als 15% ab. Möglicher Motorverschleiß oder einseitig verstopfter Filter. Filter und Motoren prüfen."
+      "description": "Zuluft- und Abluftmotor-Drehzahl weichen mehr als 22% ab oder Abluft dreht schneller als Zuluft. Möglicher Motorverschleiß oder einseitig verstopfter Filter. Filter und Motoren prüfen."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Optionen",
-        "description": "Poll-Intervall und Nennleistung pro Stufe anpassen.",
+        "description": "Gerätetyp, Poll-Intervall und Nennleistung pro Stufe anpassen.\n\nDie Leistungswerte können mit einem Strommessgerät gemessen werden für maximale Genauigkeit. Stufe 4 dient zusätzlich als Referenzanker für die dynamische **Aktuelle Leistung** Berechnung (Fanlaufgesetz P ∝ n³).",
         "data": {
           "scan_interval": "Poll-Intervall (Sekunden)",
           "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
           "watt_level_2": "Stufe 2 – Reduziert (W)",
           "watt_level_3": "Stufe 3 – Nennlüftung (W)",
-          "watt_level_4": "Stufe 4 – Intensivlüftung (W)"
+          "watt_level_4": "Stufe 4 – Intensivlüftung (W)",
+          "model": "Gerätetyp",
+          "model_selection": {
+            "profi_air_250": "profi-air 250 touch",
+            "profi_air_400": "profi-air 400 touch"
+          }
         }
       }
     }

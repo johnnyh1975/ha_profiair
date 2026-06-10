@@ -37,12 +37,17 @@ PARALLEL_UPDATES = 0
 @dataclass(frozen=True, kw_only=True)
 class KWLSensorDescription(SensorEntityDescription):
     value_fn: Callable[[KWLData], float | int | str | None] = lambda d: None
-    # force_update pro Sensor steuerbar -- True fuer Messwerte die sich
-    # selten aendern aber trotzdem lueckenlos im Recorder landen sollen
     force_update: bool = False
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
     entity_category: EntityCategory | None = field(default=None)
+
+
+@dataclass(frozen=True, kw_only=True)
+class KWLAnalyticsSensorDescription(SensorEntityDescription):
+    """Description for sensors backed by KWLAnalytics."""
+    value_fn: Callable[[KWLCoordinator], float | int | str | None] = lambda c: None
+    entity_category: EntityCategory | None = field(default=EntityCategory.DIAGNOSTIC)
 
 
 def _energy_kwh(hours: int | None, watt: float) -> float | None:
@@ -347,6 +352,159 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
 )
 
+# ── Analytics-backed sensors ──────────────────────────────────────────────────
+# Backed by KWLAnalytics; always added (not capability-gated).
+# Disabled by default until baselines are established.
+
+ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
+    # Bypass statistics
+    KWLAnalyticsSensorDescription(
+        key="bypass_open_pct",
+        name="Bypass Offen-Anteil",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        suggested_display_precision=1,
+        icon="mdi:valve-open",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.bypass_open_pct if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="bypass_avg_open_min",
+        name="Bypass Ø Offen-Dauer",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        suggested_display_precision=0,
+        icon="mdi:timer-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.avg_bypass_open_min if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="bypass_transitions_1h",
+        name="Bypass Wechsel letzte Stunde",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="",
+        icon="mdi:valve-alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.bypass_transitions_1h if c.analytics else None,
+    ),
+    # Night cooling
+    KWLAnalyticsSensorDescription(
+        key="night_cooling_last_k",
+        name="Nachtlueftung letzter Kuehlerfolg",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="K",
+        suggested_display_precision=1,
+        icon="mdi:weather-night",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda c: c.analytics.night_cooling_last_k if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="night_cooling_7d_avg_k",
+        name="Nachtlueftung Ø 7 Tage",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="K",
+        suggested_display_precision=1,
+        icon="mdi:weather-night",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda c: c.analytics.night_cooling_7d_avg_k if c.analytics else None,
+    ),
+    # HRE analytics
+    KWLAnalyticsSensorDescription(
+        key="eps_exhaust",
+        name="WRG Abluftseite",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        suggested_display_precision=1,
+        icon="mdi:heat-wave",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.eps_exhaust_pct if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="energy_balance_ratio",
+        name="Energiebilanz-Verhaeltnis",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="",
+        suggested_display_precision=3,
+        icon="mdi:scale-balance",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.energy_balance_ratio if c.analytics else None,
+    ),
+    # RPM analytics
+    KWLAnalyticsSensorDescription(
+        key="rpm_ratio",
+        name="Motor RPM Verhaeltnis",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="",
+        suggested_display_precision=4,
+        icon="mdi:fan",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.current_rpm_ratio if c.analytics else None,
+    ),
+    # Analytics maturity
+    KWLAnalyticsSensorDescription(
+        key="analytics_maturity",
+        name="Analytics Reifegrad",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        suggested_display_precision=0,
+        icon="mdi:chart-timeline-variant",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda c: c.analytics.analytics_maturity_pct if c.analytics else None,
+    ),
+    # Season
+    KWLAnalyticsSensorDescription(
+        key="analytics_season",
+        name="Analytics Saison",
+        icon="mdi:calendar-month",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.season if c.analytics else None,
+    ),
+    # Fan law consistency — max residual across all levels vs two-parameter EC model
+    # Threshold: 5% of P_Stufe4 = 4W → genuine fault detection, not motor overhead artefact
+    KWLAnalyticsSensorDescription(
+        key="fan_law_max_deviation",
+        name="EC-Modell Max-Abweichung",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        suggested_display_precision=1,
+        icon="mdi:fan-alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: (
+            round(max(abs(v) for v in c.fan_law_consistency.values()), 1)
+            if c.fan_law_consistency else None
+        ),
+    ),
+    # SPI reference sensor (Stufe 4 — the most meaningful for cross-comparison)
+    KWLAnalyticsSensorDescription(
+        key="spi_stufe4",
+        name="Spezifischer Leistungseintrag Stufe 4",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="W/(m³/h)",
+        suggested_display_precision=4,
+        icon="mdi:lightning-bolt",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: (c.spi_per_level or {}).get(4),
+    ),
+)
+
+
+_WATT_SENSOR_KEYS = frozenset({
+    "power_current",
+    "energy_level_1", "energy_level_2", "energy_level_3", "energy_level_4",
+})
+
 
 
 class KWLSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
@@ -368,6 +526,9 @@ class KWLSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
         self._attr_device_info = coordinator.device_info
         # force_update aus der Description uebernehmen
         self._attr_force_update = description.force_update
+        # Activate translation lookup from strings.json / translations/*.json
+        if not description.translation_key:
+            self._attr_translation_key = description.key
 
     @property
     def available(self) -> bool:
@@ -381,7 +542,15 @@ class KWLSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
 
 
 class KWLWattSensor(KWLSensor):
-    """Sensor der den konfigurierten watt_map-Wert des Coordinators nutzt."""
+    """Sensor fuer Leistungs- und Energieberechnung.
+
+    power_current: Dynamisch aus Motordrehzahl (Fanlaufgesetz P ∝ n³).
+                   Gibt kontinuierliche Werte auch zwischen Stufen.
+                   Referenzpunkt: konfigurierte Stufe-4-Leistung + RPM-Baseline.
+
+    energy_level_X: Statisch aus watt_map × Betriebsstunden.
+                    Stufen-Watt-Werte werden fuer Energieakkumulation benoetigt.
+    """
 
     @property
     def native_value(self) -> float | int | str | None:
@@ -389,23 +558,62 @@ class KWLWattSensor(KWLSensor):
             return None
         key = self.entity_description.key
         watt_map = self.coordinator.watt_map
+
         if key == "power_current":
-            result: float | None = watt_map.get(self.coordinator.data.current_level)
-            return result
+            rpm_ab = self.coordinator.data.motor_abluft_rpm
+            if rpm_ab is not None and rpm_ab > 50:
+                # EC-Motor-Zwei-Parameter-Modell: P = P_base + k × (RPM/RPM_ref)³
+                # Berücksichtigt ~9 W Festanteil (Steuerelektronik + Mindesterregung).
+                # Reines P ∝ n³ würde Stufe 1 um 72 % unterschätzen.
+                rpm_ref = self.coordinator.rpm_reference_stufe4
+                p_base, k_aero = self.coordinator.motor_power_params
+                return round(p_base + k_aero * (rpm_ab / rpm_ref) ** 3, 1)
+            return watt_map.get(self.coordinator.data.current_level)
+
         if key.startswith("energy_level_"):
             level = int(key[-1])
             hours = getattr(self.coordinator.data, f"hours_level_{level}", None)
             if hours is None:
                 return None
             return float(round(hours * watt_map[level] / 1000, 2))
+
         return self.entity_description.value_fn(self.coordinator.data)
 
 
-_WATT_SENSOR_KEYS = frozenset({
-    "power_current",
-    "energy_level_1", "energy_level_2", "energy_level_3", "energy_level_4",
-})
+class KWLAnalyticsSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
+    """Sensor backed by KWLAnalytics (not raw device data)."""
 
+    _attr_has_entity_name = True
+    entity_description: KWLAnalyticsSensorDescription
+
+    def __init__(
+        self,
+        coordinator: KWLCoordinator,
+        entry: ConfigEntry,
+        description: KWLAnalyticsSensorDescription,
+        mac: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{mac}_{description.key}"
+        self._attr_device_info = coordinator.device_info
+        if description.entity_category is not None:
+            self._attr_entity_category = description.entity_category
+        if not description.translation_key:
+            self._attr_translation_key = description.key
+
+    @property
+    def available(self) -> bool:
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.analytics is not None
+        )
+
+    @property
+    def native_value(self) -> float | int | str | None:
+        if not self.available:
+            return None
+        return self.entity_description.value_fn(self.coordinator)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -416,8 +624,13 @@ async def async_setup_entry(
     mac = entry.data.get("mac", entry.entry_id)
     caps = coordinator.capabilities
     supported = [d for d in SENSORS if caps is None or _is_supported(d, caps)]
-    entities = []
+    entities: list = []
     for desc in supported:
         cls = KWLWattSensor if desc.key in _WATT_SENSOR_KEYS else KWLSensor
         entities.append(cls(coordinator, entry, desc, mac))
+    # Analytics sensors are always added (not capability-gated)
+    entities += [
+        KWLAnalyticsSensor(coordinator, entry, desc, mac)
+        for desc in ANALYTICS_SENSORS
+    ]
     async_add_entities(entities)

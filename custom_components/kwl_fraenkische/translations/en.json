@@ -152,6 +152,42 @@
       },
       "system_message": {
         "name": "System Message"
+      },
+      "bypass_open_pct": {
+        "name": "Bypass open fraction"
+      },
+      "bypass_avg_open_min": {
+        "name": "Bypass avg open duration"
+      },
+      "bypass_transitions_1h": {
+        "name": "Bypass transitions last hour"
+      },
+      "night_cooling_last_k": {
+        "name": "Night cooling last result"
+      },
+      "night_cooling_7d_avg_k": {
+        "name": "Night cooling 7-day average"
+      },
+      "eps_exhaust": {
+        "name": "Heat recovery exhaust side"
+      },
+      "energy_balance_ratio": {
+        "name": "Energy balance ratio"
+      },
+      "rpm_ratio": {
+        "name": "Motor RPM ratio"
+      },
+      "analytics_maturity": {
+        "name": "Analytics maturity"
+      },
+      "analytics_season": {
+        "name": "Analytics season"
+      },
+      "fan_law_max_deviation": {
+        "name": "Fan law max deviation"
+      },
+      "spi_stufe4": {
+        "name": "Specific power input Stufe 4"
       }
     },
     "binary_sensor": {
@@ -187,6 +223,21 @@
       },
       "bypass_recommended": {
         "name": "Bypass Pre-cooling Recommended"
+      },
+      "bypass_hunting": {
+        "name": "Bypass hunting"
+      },
+      "rpm_anomaly": {
+        "name": "Motor RPM anomaly"
+      },
+      "ratio_anomaly": {
+        "name": "Motor asymmetry trend"
+      },
+      "eta_below_baseline": {
+        "name": "Heat recovery below baseline"
+      },
+      "fan_law_anomaly": {
+        "name": "Fan law anomaly"
       }
     },
     "number": {
@@ -254,6 +305,17 @@
       "ext_sensor_type_4": {
         "name": "External Sensor 4 Type"
       }
+    },
+    "button": {
+      "filter_reset": {
+        "name": "Confirm filter error"
+      },
+      "sensor_toggle": {
+        "name": "Toggle external sensors"
+      },
+      "analytics_reset": {
+        "name": "Reset analytics baselines"
+      }
     }
   },
   "issues": {
@@ -285,20 +347,25 @@
     },
     "motor_asymmetry": {
       "title": "KWL motor asymmetry detected",
-      "description": "Supply and exhaust motor RPM differ by more than 15%. This may indicate motor wear or a one-sided filter blockage. Check filters and motors."
+      "description": "Supply and exhaust motor RPM differ by more than 22 % or exhaust is faster than supply. Possible motor wear or a one-sided filter blockage. Check filters and motors."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options",
-        "description": "Adjust polling interval and power consumption per level.",
+        "description": "Adjust device model, poll interval and rated power per fan level.\n\nPower values can be measured with a power meter for maximum accuracy. Stufe 4 also serves as the reference anchor for the dynamic **Aktuelle Leistung** calculation (fan law P ∝ n³).",
         "data": {
           "scan_interval": "Poll interval (seconds)",
-          "watt_level_1": "Level 1 – Moisture Protection (W)",
-          "watt_level_2": "Level 2 – Reduced (W)",
-          "watt_level_3": "Level 3 – Nominal Ventilation (W)",
-          "watt_level_4": "Level 4 – Intensive Ventilation (W)"
+          "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
+          "watt_level_2": "Stufe 2 – Reduziert (W)",
+          "watt_level_3": "Stufe 3 – Nennlüftung (W)",
+          "watt_level_4": "Stufe 4 – Intensivlüftung (W)",
+          "model": "Device model",
+          "model_selection": {
+            "profi_air_250": "profi-air 250 touch",
+            "profi_air_400": "profi-air 400 touch"
+          }
         }
       }
     }

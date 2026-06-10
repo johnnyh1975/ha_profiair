@@ -1,6 +1,46 @@
 """Konstanten für die KWL Fränkische Rohrwerke Integration."""
 DOMAIN = "kwl_fraenkische"
 
+# ── Gerätemodelle ─────────────────────────────────────────────────────────────
+
+CONF_MODEL = "model"
+MODEL_PROFI_AIR_250 = "profi_air_250"
+MODEL_PROFI_AIR_400 = "profi_air_400"
+DEFAULT_MODEL = MODEL_PROFI_AIR_400
+
+# Nennleistung pro Lüftungsstufe in Watt -- modellspezifische Standardwerte
+# Basieren auf Herstellerdatenblatt Fränkische Rohrwerke, typische Installationswerte.
+# Nutzer können diese Werte im Options Flow für ihre Installation anpassen.
+# Watt-Standardwerte pro Lüftungsstufe.
+# Profi-Air 400 touch: mit Strommessgerät gemessene Werte seit v1.1 (gemessene Werte).
+# Profi-Air 250 touch: Schätzwerte auf Basis Fanlaufgesetz (keine Messung vorhanden).
+#
+# EC-Motor-Modell: P = P_base + k × (RPM/RPM_max)³
+#   P_base ≈ 8.93 W  (Steuerelektronik + Mindesterregung, konstant)
+#   k ≈ 71.71 W      (aerodynamischer Anteil bei Vollast)
+#   → Reines P ∝ n³ unterschätzt bei Stufe 1 um 72 % — nicht verwenden.
+WATT_DEFAULTS: dict[str, dict[int, float]] = {
+    MODEL_PROFI_AIR_250: {1: 4.0, 2: 8.0, 3: 23.0, 4: 45.0},
+    MODEL_PROFI_AIR_400: {1: 11.0, 2: 17.5, 3: 43.5, 4: 80.0},
+}
+
+# Typische Abluft-RPM pro Stufe (gemessen, 400er Installation, st1a=2.1V..st4a=6.5V)
+# Wird für EC-Motor-Modell verwendet wenn keine Analytics-Baseline verfügbar.
+RPM_DEFAULTS: dict[int, float] = {1: 858.0, 2: 1257.0, 3: 1961.0, 4: 2538.0}
+
+# Volumenstrom-Referenzwerte (Q_ref m³/h, RPM_ref) pro Modell
+# Bezugsquelle: Herstellerdatenblatt Fränkische Rohrwerke, Bezugs-Volumenstrom @ 50 Pa
+VOLUMENSTROM_REF: dict[str, tuple[float, float]] = {
+    MODEL_PROFI_AIR_400: (280.0, 2085.0),  # BP4 5.4V; RPM aus Messdaten interpoliert
+    MODEL_PROFI_AIR_250: (175.0, 1961.0),  # BP4 5.1V
+}
+
+# Statische Fallback-Volumenstromtabelle (ohne RPM-Daten)
+VOLUMENSTROM_STATIC: dict[str, dict[int, int]] = {
+    MODEL_PROFI_AIR_400: {1: 115, 2: 169, 3: 263, 4: 341},
+    MODEL_PROFI_AIR_250: {1:  77, 2: 112, 3: 175, 4: 226},
+}
+
 # Nennleistung pro Lüftungsstufe in Watt (gemessen)
 LEVEL_TO_WATT: dict[int, float] = {
     1: 11.0,
@@ -15,8 +55,8 @@ CONF_WATT_LEVEL_2 = "watt_level_2"
 CONF_WATT_LEVEL_3 = "watt_level_3"
 CONF_WATT_LEVEL_4 = "watt_level_4"
 
-# Standardwerte (gemessen an Profi-Air 400)
-DEFAULT_WATT = {1: 11.0, 2: 17.5, 3: 43.5, 4: 80.0}
+# Standardwerte (Profi-Air 400 touch)
+DEFAULT_WATT = WATT_DEFAULTS[MODEL_PROFI_AIR_400]
 
 # Alle bekannten XML-Tags aus status.xml
 # Wird fuer unknown_tags Discovery genutzt

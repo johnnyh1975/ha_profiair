@@ -58,10 +58,13 @@ async def async_setup_entry(
     caps = coordinator.capabilities
     mac = entry.data.get("mac", entry.entry_id)
     supported = [d for d in BUTTONS if caps is None or _is_supported(d, caps)]
-    async_add_entities(
+    entities: list = [
         KWLButton(coordinator, entry, description, mac)
         for description in supported
-    )
+    ]
+    # Analytics reset button -- always present, no device endpoint
+    entities.append(KWLAnalyticsResetButton(coordinator, entry, mac))
+    async_add_entities(entities)
 
 
 class KWLButton(CoordinatorEntity[KWLCoordinator], ButtonEntity):
@@ -81,6 +84,8 @@ class KWLButton(CoordinatorEntity[KWLCoordinator], ButtonEntity):
         self.entity_description = description
         self._attr_unique_id = f"{mac}_{description.key}"
         self._attr_device_info = coordinator.device_info
+        if not description.translation_key:
+            self._attr_translation_key = description.key
 
     @property
     def available(self) -> bool:
@@ -103,3 +108,32 @@ class KWLButton(CoordinatorEntity[KWLCoordinator], ButtonEntity):
 
         # Status sofort neu laden (z.B. filter0 aendert sich nach Quittierung)
         await self.coordinator.async_request_refresh()
+
+
+class KWLAnalyticsResetButton(CoordinatorEntity[KWLCoordinator], ButtonEntity):
+    """Setzt alle Analytics-Baselines zurueck -- z.B. nach Filterwechsel."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Analytics Baselines zuruecksetzen"
+    _attr_icon = "mdi:chart-timeline-variant-shimmer"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = True
+
+    def __init__(
+        self,
+        coordinator: KWLCoordinator,
+        entry: ConfigEntry,
+        mac: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{mac}_analytics_reset"
+        self._attr_device_info = coordinator.device_info
+        self._attr_translation_key = "analytics_reset"
+
+    @property
+    def available(self) -> bool:
+        return bool(self.coordinator.last_update_success)
+
+    async def async_press(self) -> None:
+        """Analytics-Baselines loeschen und neu aufbauen."""
+        await self.coordinator.async_reset_analytics()

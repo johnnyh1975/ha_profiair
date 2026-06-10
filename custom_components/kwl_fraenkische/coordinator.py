@@ -16,8 +16,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+
+from .analytics import (
+    ANALYTICS_STORAGE_KEY_PREFIX,
+    ANALYTICS_STORAGE_VERSION,
+    KWLAnalytics,
+    KWLPollSnapshot,
+)
 
 from .const import (
     ALL_KNOWN_TAGS,
@@ -378,7 +386,10 @@ class KWLData:
 
         Typisch: 75-85% bei sauberer Anlage.
         Unter 65% dauerhaft: Filter oder Waermetauscher reinigen.
-        Nur sinnvoll wenn T_abluft - T_aussen > 3 K (sonst Division durch kleine Zahlen).
+        Nur sinnvoll wenn T_abluft - T_aussen >= 3 K (sonst Messrauschen dominiert).
+        Typisch: 75-87% im Heizbetrieb (Bypass zu, grosses Delta).
+        Im Sommer (Bypass offen, kleines Delta) 40-65% -- das ist normal.
+        Herstellerwert ηt = 87% bei Nennbetrieb und ausgeglichenem Volumenstrom.
         """
         t_ab = self.temp_abluft
         t_zu = self.temp_zuluft
@@ -386,17 +397,21 @@ class KWLData:
         if t_ab is None or t_zu is None or t_au is None:
             return None
         delta = t_ab - t_au
-        if delta < 1.5:
-            return None  # Temperaturdifferenz zu klein fuer sinnvolle Berechnung
+        if delta < 3.0:
+            return None  # < 3 K: Messrauschen macht Berechnung unzuverlaessig
         return round((t_zu - t_au) / delta * 100, 1)
 
     @property
     def heat_recovery_watts(self) -> float | None:
         """Zurueckgewonnene Waermeleistung in Watt.
 
-        Q = 0.34 [Wh/m3K] * Volumenstrom [m3/h] * (T_abluft - T_zuluft) [K]
-        Volumenstrom wird aus T_abluft - T_zuluft und Motorspannungen geschaetzt.
-        Vereinfachte Berechnung: fixer Volumenstrom 300 m3/h (Stufe 3 Nennwert).
+        Q = 0.34 [Wh/(m³·K)] × Volumenstrom [m³/h] × (T_abluft − T_zuluft) [K]
+
+        Volumenstrom wird dynamisch aus der Motordrehzahl abgeleitet wenn verfügbar
+        (Fanlaufgesetz Q ∝ n, verankert am Bezugs-Volumenstrom des Herstellers).
+        Fallback: modellspezifische Stufen-Tabelle aus Fanlaufgesetz-Berechnung.
+
+        Genauigkeit: ±15 % typisch; genaue Messung erfordert Volumenstromsensor.
         """
         t_ab = self.temp_abluft
         t_zu = self.temp_zuluft
@@ -405,7 +420,18 @@ class KWLData:
         delta = t_ab - t_zu
         if delta <= 0:
             return None
-        volumenstrom = {1: 100, 2: 180, 3: 300, 4: 400}.get(self.current_level, 300)
+
+        # Dynamische Berechnung aus Motordrehzahl (bevorzugt)
+        rpm_ab = self.motor_abluft_rpm
+        if rpm_ab is not None and rpm_ab > 100:
+            # Standardreferenz: 400 touch Bezugs-Volumenstrom 280 m³/h @ RPM_ref 2085
+            # Gültig für Installationen mit ähnlichem Druckverlust (10-50 Pa)
+            q_ref, rpm_ref = 280.0, 2085.0
+            volumenstrom = q_ref * rpm_ab / rpm_ref
+        else:
+            # Fallback: statische Tabelle (fan-law abgeleitet, 400-touch-Referenz)
+            volumenstrom = {1: 115, 2: 169, 3: 263, 4: 341}.get(self.current_level, 263)
+
         return round(0.34 * volumenstrom * delta, 0)
 
     @property
@@ -424,10 +450,16 @@ class KWLData:
     def bypass_leaking(self) -> bool:
         """True wenn Bypass-Leckage vermutet wird.
 
-        Wenn der Bypass geschlossen sein soll aber Fortlufttemperatur
-        fast identisch mit Aussenlufttemperatur ist, leakt die Klappe.
-        Kriterium: Bypass nicht offen UND |T_fort - T_aussen| < 2 K.
-        Nur aktiv wenn T_abluft - T_aussen > 5 K (Heizbetrieb).
+        Zwei Erkennungspfade:
+
+        Heizbetrieb (T_abluft - T_aussen >= 5 K, Bypass soll zu sein):
+          Fortlufttemperatur fast identisch mit Aussenluft (< 4 K Abstand)
+          obwohl der Bypass geschlossen sein soll.
+
+        Sommerbetrieb (T_abluft - T_aussen 2-5 K, Bypass explizit zu):
+          Bypass ist auf "zu" gesetzt, aber Fortluft folgt Aussenluft
+          innerhalb 2 K -- deutet auf undichte Bypass-Klappe hin.
+          Schwaechere Schwelle, aber durch _DEFECT_THRESHOLD (10 Polls) abgesichert.
         """
         if "offen" in self.bypass_status.lower():
             return False  # Bypass soll offen sein -- kein Defekt
@@ -436,38 +468,58 @@ class KWLData:
         t_ab = self.temp_abluft
         if t_fort is None or t_au is None or t_ab is None:
             return False
-        if t_ab - t_au < 5.0:
-            return False  # Temperaturdifferenz zu klein fuer Erkennung
-        return abs(t_fort - t_au) < 4.0
+        delta = t_ab - t_au
+        # Heizbetrieb: strenge Bedingung
+        if delta >= 5.0:
+            return abs(t_fort - t_au) < 4.0
+        # Sommerbetrieb: softer, aber nur wenn Bypass explizit geschlossen
+        if 2.0 <= delta < 5.0 and "zu" in self.bypass_status.lower():
+            return abs(t_fort - t_au) < 2.0
+        return False
 
     @property
     def motor_asymmetry(self) -> bool:
-        """True wenn Motorasymmetrie > 15% erkannt wird.
+        """True wenn Motorasymmetrie > 22% erkannt wird.
 
-        Grosse RPM-Differenz bei gleicher Stufe deutet auf
-        Motorverschleiss oder einseitig verstopften Filter hin.
+        Zuluftmotor laeuft konstruktionsbedingt ~20% schneller als Abluftmotor
+        (leichter Ueberdruck im Gebaeudeinneren -- normaler Auslegungswert).
+        Eine Asymmetrie > 22% deutet auf Motorverschleiss oder einseitig
+        verstopften Filter hin.
+
+        Zusaetzlich: wenn Abluft schneller als Zuluft dreht (umgekehrter Druck),
+        wird das als Defekt gewertet unabhaengig vom Prozentwert.
+        Schwellenwert: 10% -- gibt Rausch-Toleranz.
+
+        Fuer Trend-Erkennung (fruehwarnung) siehe analytics.ratio_anomaly.
         """
         rpm_zu = self.motor_zuluft_rpm
         rpm_ab = self.motor_abluft_rpm
-        if rpm_zu is None or rpm_ab is None or rpm_zu == 0:
+        if rpm_zu is None or rpm_ab is None or max(rpm_zu, rpm_ab) == 0:
             return False
-        asymmetrie = abs(rpm_zu - rpm_ab) / rpm_zu
-        return asymmetrie > 0.25
+        # Umgekehrte Asymmetrie: Abluft schneller als Zuluft
+        if rpm_ab > rpm_zu * 1.10:
+            return True
+        # Zu grosse Asymmetrie in erwarteter Richtung
+        asymmetrie = abs(rpm_zu - rpm_ab) / max(rpm_zu, rpm_ab)
+        return asymmetrie > 0.22
 
     @property
     def bypass_recommended(self) -> bool:
         """True wenn Bypass-Vorkuehlung gerade sinnvoll waere.
 
-        Kriterium: Aussenluft mindestens 2 K kuehler als Abluft
+        Kriterium: Aussenluft mindestens 3 K kuehler als Abluft
         UND Abluft > 22 C (Haus warm genug zum Vorkuehlen)
         UND Aussenluft > 10 C (kein Frost-Risiko).
+
+        Schwelle 3 K entspricht dem empfohlenen bypass_delta_schwelle
+        der Sommer-Kuehlungs-Automation.
         """
         t_au = self.temp_aussenluft
         t_ab = self.temp_abluft
         if t_au is None or t_ab is None:
             return False
         return (
-            t_au < t_ab - 2.0
+            t_au < t_ab - 3.0
             and t_ab > 22.0
             and t_au > 10.0
         )
@@ -565,6 +617,10 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         self.capabilities: KWLCapabilities | None = None
         self._bypass_leak_count: int = 0
         self._motor_asym_count: int = 0
+        self._unknown_tags_logged: bool = False  # log once after discovery only
+        # Analytics engine + persistent store
+        self._analytics: KWLAnalytics | None = None
+        self._store: Store | None = None
         # Naechste Wartungswarnung -- aus entry.data laden (nicht options, da sonst
         # options_update_listener einen ungewollten Reload ausloest)
         self._maintenance_next_threshold: float = entry.data.get(
@@ -595,11 +651,22 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
     async def async_setup(self) -> None:
         """Wird nach dem ersten erfolgreichen Datenabruf aufgerufen.
 
-        Startet die automatische Zeitsynchronisation:
-        - Sofortige Synchronisation beim Start
-        - Danach alle 24 Stunden
-        - Sommer-/Winterzeit wird dabei automatisch mitgesetzt
+        Startet die automatische Zeitsynchronisation und laedt die
+        Analytics-Baselines aus dem persistenten Speicher.
         """
+        # Analytics persistenter Speicher (pro Config Entry)
+        self._store = Store(
+            self.hass,
+            ANALYTICS_STORAGE_VERSION,
+            f"{ANALYTICS_STORAGE_KEY_PREFIX}{self.config_entry.entry_id}",
+        )
+        stored = await self._store.async_load()
+        self._analytics = KWLAnalytics.from_dict(stored)
+        _LOGGER.debug(
+            "KWL Analytics geladen -- Reifegrad %.1f%%",
+            self._analytics.analytics_maturity_pct,
+        )
+
         await self._async_sync_time()
 
         self._unsub_time_sync = async_track_time_interval(
@@ -793,18 +860,185 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
             await self._discover_capabilities(raw)
 
         # unknown_tags nur einmal nach Discovery loggen
-        if self.capabilities is not None and self.capabilities.unknown_tags:
+        if (
+            self.capabilities is not None
+            and self.capabilities.unknown_tags
+            and not self._unknown_tags_logged
+        ):
             _LOGGER.info(
                 "Unbekannte XML-Tags gefunden (neue Firmware?): %s -- "
                 "Bitte GitHub Issue eroeffnen: https://github.com/johnnyh1975/ha_profiair400/issues",
-                sorted(self.capabilities.unknown_tags)
+                sorted(self.capabilities.unknown_tags),
             )
+            self._unknown_tags_logged = True
+
+        # Analytics aktualisieren und verzoegert persistieren (alle 30 min)
+        if self._analytics is not None and self._store is not None:
+            import time as _time
+            scan_s = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            snap = KWLPollSnapshot(
+                timestamp=_time.time(),
+                temp_abluft=data.temp_abluft,
+                temp_zuluft=data.temp_zuluft,
+                temp_aussenluft=data.temp_aussenluft,
+                temp_fortluft=data.temp_fortluft,
+                rpm_abluft=data.motor_abluft_rpm,
+                rpm_zuluft=data.motor_zuluft_rpm,
+                current_level=data.current_level,
+                bypass_status=data.bypass_status,
+                fan_at_level_4=(data.current_level == 4),
+            )
+            self._analytics.update(snap, poll_interval_s=float(scan_s))
+            self._store.async_delay_save(self._analytics.to_dict, 1800)
 
         return data
 
     def _get_session(self) -> aiohttp.ClientSession:
         """Gibt die HA-verwaltete aiohttp Session zurueck."""
         return self._session  # type: ignore[no-any-return]
+
+    @property
+    def analytics(self) -> KWLAnalytics | None:
+        """Zugriff auf die Analytics-Engine fuer Entity-Lesezugriffe."""
+        return self._analytics
+
+    @property
+    def rpm_reference_stufe4(self) -> float:
+        """Referenz-RPM (Abluft) bei Stufe 4 fuer dynamische Leistungsberechnung.
+
+        Nutzt die selbstkalibrierte Analytics-Baseline sobald MIN_N_RPM Samples
+        vorliegen. Davor: Fallback aus gemessenen Installationsdaten (400 touch,
+        st4a = 6.5 V → 2538 RPM).
+        """
+        if self._analytics is not None:
+            baseline = self._analytics.rpm_level_baseline(4)
+            if baseline is not None:
+                return baseline
+        return 2538.0  # gemessener Standardwert (400 touch, st4a = 6.5 V)
+
+    @property
+    def motor_power_params(self) -> tuple[float, float]:
+        """EC-Motor-Zwei-Parameter-Modell: P = P_base + k × (RPM/RPM_ref)³.
+
+        Berechnet P_base (fixer Overhead: Steuerelektronik + Mindesterregung)
+        und k (aerodynamischer Anteil) per Least-Squares aus den konfigurierten
+        Watt-Messwerten und den bekannten RPM-Verhältnissen.
+
+        Für die 400-touch-Installation mit gemessenen Werten ergibt sich:
+          P_base ≈ 8.93 W, k ≈ 71.71 W  (R² = 0.9989, max Residuum 1.5 W)
+
+        Reines P ∝ n³ würde Stufe 1 um 72 % unterschätzen — nicht verwenden.
+        Gibt (P_base, k_aero) zurück.
+        """
+        from .const import RPM_DEFAULTS
+        rpm_ref = self.rpm_reference_stufe4
+
+        # x_s = (RPM_s / RPM_ref)³  — RPM aus Analytics-Baseline oder Standardwerten
+        x_vals: list[float] = []
+        y_vals: list[float] = []
+        for level in range(1, 5):
+            rpm_level: float | None = None
+            if self._analytics is not None:
+                rpm_level = self._analytics.rpm_level_baseline(level)
+            if rpm_level is None:
+                rpm_level = RPM_DEFAULTS.get(level, rpm_ref * level / 4)
+            x_vals.append((rpm_level / rpm_ref) ** 3)
+            y_vals.append(self.watt_map.get(level, 0.0))
+
+        # Einfache lineare Regression: y = P_base + k * x
+        n = len(x_vals)
+        xm = sum(x_vals) / n
+        ym = sum(y_vals) / n
+        num = sum((xi - xm) * (yi - ym) for xi, yi in zip(x_vals, y_vals))
+        den = sum((xi - xm) ** 2 for xi in x_vals)
+        if den < 1e-9:
+            return 0.0, y_vals[-1]
+        k = num / den
+        p_base = ym - k * xm
+        return max(0.0, p_base), max(0.0, k)
+
+    @property
+    def fan_law_consistency(self) -> dict[int, float] | None:
+        """Residuen des EC-Motor-Zwei-Parameter-Modells pro Stufe in Prozent von P_Stufe4.
+
+        Positiver Wert: gemessene Leistung höher als Modell vorhersagt.
+        Negativer Wert: gemessene Leistung niedriger als Modell vorhersagt.
+
+        Erwartungswert bei gesundem Motor mit guten Messwerten: < ±2 %.
+        Werte > ±5 % (von P_Stufe4) deuten auf Messfehler oder Motoranomalie.
+        Benötigt RPM-Daten (Analytics-Baseline oder aktueller Poll).
+
+        Wichtig: Reines P ∝ n³ würde bei Stufe 1 eine Abweichung von 256 % zeigen
+        (gemessene 11 W vs. 3 W fan-law). Das ist kein Fehler — EC-Motoren haben
+        ~9 W Festanteil. Dieses Modell berücksichtigt diesen Anteil korrekt.
+        """
+        if self.data is None:
+            return None
+
+        # RPM-Werte für jede Stufe sammeln
+        from .const import RPM_DEFAULTS
+        rpm_ref = self.rpm_reference_stufe4
+        rpm: dict[int, float] = {}
+        for level in range(1, 5):
+            baseline: float | None = None
+            if self._analytics is not None:
+                baseline = self._analytics.rpm_level_baseline(level)
+            rpm[level] = baseline if baseline is not None else RPM_DEFAULTS.get(level, 0.0)
+
+        if any(v == 0.0 for v in rpm.values()):
+            return None
+
+        p_base, k_aero = self.motor_power_params
+        w4 = self.watt_map.get(4, 80.0)
+        if w4 == 0:
+            return None
+
+        result: dict[int, float] = {}
+        for level in range(1, 5):
+            predicted = p_base + k_aero * (rpm[level] / rpm_ref) ** 3
+            measured = self.watt_map.get(level, 0.0)
+            result[level] = round((measured - predicted) / w4 * 100, 1)
+        return result
+
+    @property
+    def spi_per_level(self) -> dict[int, float] | None:
+        """Specific Power Input (W pro m³/h) pro Stufe.
+
+        SPI[level] = watt_measured[level] / Q_estimated[level]
+
+        Baseline beim Ersteinrichten des Geraets. Steigende SPI bei
+        Nachfolgemessung = Motorverschleiss oder Filterverstopfung.
+        Herstellerreferenz: 0.34 W/(m³/h) bei Bezugs-Volumenstrom 280 m³/h, 50 Pa.
+        Installierte Werte typisch niedriger (geringerer Leitungsdruck).
+        """
+        if self.data is None:
+            return None
+        # Verwende Analytics-RPM-Baselines wenn verfuegbar
+        q_ref, rpm_ref_val = 280.0, 2085.0  # 400-touch Standardwerte
+        result: dict[int, float] = {}
+        for level in range(1, 5):
+            watt = self.watt_map.get(level)
+            if watt is None:
+                continue
+            # RPM fuer Volumenstromschaetzung
+            rpm_for_level: float | None = None
+            if self._analytics is not None:
+                rpm_for_level = self._analytics.rpm_level_baseline(level)
+            if rpm_for_level is None and self.data.current_level == level:
+                rpm_for_level = self.data.motor_abluft_rpm
+            if rpm_for_level is None or rpm_for_level < 100:
+                continue
+            q_estimated = q_ref * rpm_for_level / rpm_ref_val
+            result[level] = round(watt / q_estimated, 4)
+        return result if result else None
+
+    async def async_reset_analytics(self) -> None:
+        """Setzt alle Analytics-Baselines zurueck (z.B. nach Filterwechsel)."""
+        if self._analytics is not None:
+            self._analytics.reset_baselines()
+        if self._store is not None:
+            await self._store.async_save({})
+        _LOGGER.info("KWL Analytics-Baselines zurueckgesetzt")
 
     async def async_set_level(self, level: int) -> None:
         if level not in (1, 2, 3, 4):
