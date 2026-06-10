@@ -2,741 +2,432 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
-[![Quality Scale](https://img.shields.io/badge/Quality%20Scale-Platinum-silver.svg)](https://developers.home-assistant.io/docs/core/integration-quality-scale/)
-[![Tests](https://img.shields.io/badge/Tests-218%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
+[![Tests](https://img.shields.io/badge/Tests-219%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.3.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.4.0-blue.svg)](CHANGELOG.md)
 
-Local-only Home Assistant integration for **Fränkische Rohrwerke Profi-Air** ventilation units. No cloud, no external services — talks directly to your KWL over HTTP, the same way the built-in web interface does.
-
-![Fränkische Rohrwerke](brand/logo.png)
+> **What this integration makes possible:** a profi-air 250 or 400 touch that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
 ---
 
 ## Table of Contents
 
-- [Why this integration?](#why-this-integration)
+- [What you get](#what-you-get)
 - [Supported devices](#supported-devices)
-- [How Capability Discovery works](#how-capability-discovery-works)
-- [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
-- [Setup](#setup)
-- [Entities](#entities)
-- [Energy Dashboard](#energy-dashboard)
-- [Automation examples](#automation-examples)
-  - [Summer night pre-cooling](#1--summer-night-pre-cooling-complete-production-ready)
-  - [Summer morning close](#2--summer-morning-close-combined)
-  - [Bypass recommendation sensor](#3--bypass-pre-cooling-recommended-sensor)
-  - [Presence-aware ventilation](#4--presence-aware-ventilation)
-  - [Heat recovery efficiency alert](#5--heat-recovery-efficiency-alert)
-  - [Frost risk protection](#6--frost-risk-protection)
-  - [DWD forecast sensor](#dwd-forecast-sensor)
-- [Feature comparison](#feature-comparison)
+- [First-time setup](#first-time-setup)
+- [Day one — immediate features](#day-one--immediate-features)
+- [Week one — baselines establish](#week-one--baselines-establish)
+- [First winter — full diagnostics activate](#first-winter--full-diagnostics-activate)
+- [Summer night cooling automation](#summer-night-cooling-automation)
+- [All entities](#all-entities)
+- [Options and calibration](#options-and-calibration)
+- [After filter replacement](#after-filter-replacement)
+- [Firmware bypass settings](#firmware-bypass-settings)
+- [Energy dashboard](#energy-dashboard)
 - [Troubleshooting](#troubleshooting)
-- [HTTP endpoints](#http-endpoints-reference)
-- [Known limitations](#known-limitations)
+- [Known firmware behaviour](#known-firmware-behaviour)
 - [Changelog](#changelog)
 
 ---
 
-## Why this integration?
+## What you get
 
-Most smart home integrations for ventilation systems depend on cloud services or proprietary apps. This integration uses your KWL's built-in HTTP interface — **your data never leaves your home network**.
+The profi-air 250 and 400 touch are excellent ventilation units with a built-in weekly schedule and a local HTTP interface. What they lack is any awareness of the outside world — weather, indoor temperature trends, season changes, or their own performance over time.
 
-Beyond basic control, this integration brings genuinely intelligent ventilation:
+This integration adds that intelligence layer entirely within Home Assistant:
 
-- **Weather-aware cooling** — open bypass only when tomorrow's forecast exceeds your threshold
-- **Presence-aware scheduling** — drop to minimum level when everyone leaves
-- **CO2-responsive ventilation** — boost automatically when sensors trigger
-- **Energy tracking** — cumulative kWh per level in the HA Energy Dashboard
+| | Without this integration | With this integration |
+|---|---|---|
+| **Control** | Device touchscreen + weekly schedule | HA dashboard + automations |
+| **Summer cooling** | Manual bypass toggle | Automatic night pre-cooling based on weather + indoor temperature |
+| **Maintenance alerts** | "F1" on display when filter is overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
+| **Energy tracking** | None | Cumulative kWh per level in HA Energy Dashboard |
+| **Efficiency** | No feedback | Real-time heat recovery efficiency with self-calibrating seasonal baseline |
+| **Power monitoring** | None | Continuous watt estimate from motor RPM — EC motor model P = P_base + k × (RPM/RPM_ref)³ |
+| **Self-learning** | None | Analytics engine builds device-specific baselines over first weeks and months |
 
-The built-in weekly schedule on the device cannot do any of this. HA automations can.
+Everything runs locally. No cloud, no subscription, no external services.
 
 ---
 
 ## Supported devices
 
-This integration works with **all Fränkische Rohrwerke Profi-Air models** that expose an HTTP interface on your local network. It automatically detects what your firmware supports and creates only the relevant entities.
+| Device | Status |
+|---|---|
+| **profi-air 400 touch** | ✅ Full support |
+| **profi-air 250 touch** | ✅ Full support |
+| profi-air with external sensors (Artikelnr. 78300831/78300832) | ✅ External sensor entities included |
+| Older profi-air models (classic firmware) | ✅ Core entities via capability discovery |
 
-| Model | Interface | Entities |
-|-------|-----------|----------|
-| Profi-Air 400 (classic firmware) | `/status.xml` + installer area | Full — motor, corrections, ext. sensors, installer |
-| Profi-Air 250 Touch | `/status.xml` | Core — temperatures, bypass, filter, energy |
-| Profi-Air 400 Touch | `/status.xml` | Core — temperatures, bypass, filter, energy |
-| Other Profi-Air models with HTTP | `/status.xml` | Auto-detected — open an issue if something is missing |
-
-> **Profi-Air 250 Touch** and **Profi-Air 400 Touch** users: this integration works with your device. Capability Discovery automatically detects what your firmware supports and skips entities that are not available.
-
-> Not sure which model you have? If `http://YOUR_KWL_IP/status.xml` returns XML data, this integration will work.
-
----
-
-## How Capability Discovery works
-
-Since v1.1.0, the integration **automatically discovers** what your device supports on first startup — no manual configuration required.
-
-```
-First startup
-      ↓
-Poll /status.xml → inventory all XML tags
-      ↓
-Probe 3 endpoints in parallel (3 s timeout each):
-    /install/install.htm  →  installer area available?
-    /time.htm             →  time sync supported?
-    /wopla.htm            →  program control available?
-      ↓
-Build KWLCapabilities — frozen snapshot of device features
-      ↓
-Each platform filters its entity list:
-    required_tag missing    → entity not created
-    required_endpoint down  → entity not created
-      ↓
-Only working entities appear in HA — zero unavailable clutter
-```
-
-**What this means in practice:**
-
-- A full-featured firmware gets all entities (motor RPM, installer settings, corrections, external sensors…)
-- A minimal firmware (newer Touch) gets only the entities that actually work
-- If a firmware update adds new XML tags, a restart picks them up automatically
-- Unknown tags are logged and shown in Diagnostics — please open a GitHub issue so we can add support
-
----
-
-## Features
-
-### Control
-- **Ventilation levels 1–4** — fan entity with percentage slider, preset modes and optimistic UI updates
-- **Bypass control** — Manual open / Manual closed / Automatic
-- **Control mode** — switch between Weekly Program and Manual *(if `/wopla.htm` reachable)*
-- **Party timer** — configurable duration 10–240 min
-- **Language selection** — DE / EN / FR / IT / NL
-- **Temperature corrections** — calibrate all four sensors ±4.9 °C *(if firmware supports)*
-- **Airflow calibration** — per-level supply and exhaust tuning *(if firmware supports, disabled by default)*
-- **Installer settings** — bypass thresholds, house type, pre-heater, safety manager, external sensors via HTTP Basic Auth *(if installer area reachable)*
-
-### Monitoring
-- **All four temperatures** — outdoor, supply (after heat exchanger), exhaust (indoor), extract (outgoing)
-- **Motor RPM and voltage** — supply and exhaust motors *(if firmware supports)*
-- **Current power** — real-time watts based on active level (configurable per device)
-- **Cumulative energy** — kWh per level, ready for HA Energy Dashboard
-- **Filter status** — OK / needs replacement (binary sensor + automatic repair issue)
-- **Filter lifetime** — total and remaining days *(if firmware supports)*
-- **Operating hours** — per level, frost protection, pre-heater *(disabled by default)*
-- **Safety manager, passive mode, pre-heater** — binary sensors *(if firmware supports)*
-- **External sensor values** — up to 4 CO2 or humidity sensors *(if firmware supports)*
-- **System message, bypass status, party timer, current level text**
-
-### Smart home integration
-- **Automatic time sync** — on startup and every 24 hours, DST-aware *(if firmware supports)*
-- **Energy dashboard** — four kWh sensors compatible with HA Energy panel
-- **Re-auth flow** — HA prompts for new credentials automatically on 401
-- **Reconfigure flow** — change IP or credentials without reinstalling
-- **Repair issue** — filter alert with one-click acknowledgement in HA UI
-- **Download diagnostics** — full capability report, sensitive data auto-redacted
-
-### Quality
-- 🏆 **HA Integration Quality Scale: Platinum**
-- **161 automated tests** — unit, config flow, capability discovery
-- **Full translations** — 🇩🇪 German and 🇬🇧 English
-- **GitHub Actions CI** — HACS validation + Hassfest + pytest on Python 3.12/3.13
+The integration automatically detects your firmware capabilities on first start. Entities that your device does not support are simply not created.
 
 ---
 
 ## Requirements
 
-- Home Assistant **2026.3** or newer
-- KWL reachable via HTTP on your local network (typically `http://10.10.4.1`)
-- No internet connection required
+- Home Assistant 2026.3 or newer
+- [HACS](https://hacs.xyz) installed
+- profi-air device reachable on your local network at a static IP
+- Installer credentials (factory default: `install` / `konfig12` — change this if you have not)
 
 ---
 
 ## Installation
 
-### Via HACS (recommended)
+**Via HACS (recommended)**
 
-1. Open HACS → Integrations → ⋮ → Custom repositories
-2. Add URL: `https://github.com/johnnyh1975/ha-kwl-fraenkische`
-3. Category: Integration → Add
-4. Search for **KWL Fränkische Rohrwerke** and install
-5. Restart Home Assistant
+1. HACS → Integrations → menu (⋮) → Custom repositories
+2. Add `https://github.com/johnnyh1975/ha-kwl-fraenkische` — category Integration
+3. Search for **KWL Fränkische Rohrwerke**, install, restart HA
 
-### Manual
+**Manual**
 
-1. Copy the `custom_components/kwl_fraenkische/` folder into your HA config directory
-2. Restart Home Assistant
+Copy `custom_components/kwl_fraenkische` into your `config/custom_components/` directory, then restart HA.
 
 ---
 
-## Setup
+## First-time setup
 
-1. **Settings → Devices & Services → Add Integration**
-2. Search for **KWL Fränkische Rohrwerke**
-3. **Step 1 — IP address:** Enter the IP of your KWL (default: `10.10.4.1`)
-4. **Step 2 — Credentials:** Enter installer credentials *(only shown if installer area detected)*
-   - Factory default: Username `install` / Password `konfig12`
-5. **Step 3 — Power values:** Confirm or adjust watt per level
-   - Defaults for Profi-Air 400: **11 / 17.5 / 43.5 / 80 W**
-   - Measure with a clamp meter for accurate energy tracking
+Go to **Settings → Devices & Services → Add Integration**, search for **KWL Fränkische Rohrwerke**.
 
-> ⚠️ **Security:** Factory credentials `install` / `konfig12` are publicly known. Change the password at `http://YOUR_KWL_IP/setup.htm` before or immediately after setup.
+**Step 1 — IP address**
+Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration checks connectivity immediately.
 
-### Upgrade from v1.1.0 to v1.2.0
+**Step 2 — Installer credentials**
+Enter the username and password for the installer area. Factory defaults: `install` / `konfig12`.
+Change this password on the device if you have not already done so.
 
-Install the new version via HACS and restart HA. The three new DiIn binary sensors appear automatically if your firmware exposes them — no reconfiguration needed.
+**Step 3 — Power reference values**
+These determine the accuracy of the Energy Dashboard and anchor the real-time power calculation. The 400 touch defaults are **measured values** (clamp meter, four levels). The 250 touch defaults are estimates — measure your own installation for accuracy.
 
-### Upgrade from v1.0.0 to v1.1.0
+| | profi-air 250 touch | profi-air 400 touch |
+|---|---|---|
+| Stufe 1 – Feuchteschutz | 4 W | **11 W** |
+| Stufe 2 – Reduziert | 8 W | **17.5 W** |
+| Stufe 3 – Nennlüftung | 23 W | **43.5 W** |
+| Stufe 4 – Intensivlüftung | 45 W | **80 W** |
 
-Simply install the new version via HACS and restart HA. Capability Discovery runs automatically on the first poll — no reconfiguration needed. All existing entities are preserved; new capability-dependent entities are added if your firmware supports them.
+All four values are individually configurable. Stufe 4 is the primary anchor — the integration derives real-time power at all other speeds from it using the EC motor model (see below).
 
-### Reconfigure
-
-Change IP or credentials without reinstalling:
-**Settings → Devices & Services → KWL → ⋮ → Reconfigure**
+**After setup — set your device model**
+Settings → Devices & Services → KWL → Configure → select your model. This activates model-appropriate defaults and enables model-specific airflow estimation.
 
 ---
 
-## Entities
+## Day one — immediate features
 
-All entities belong to a single **KWL** device identified by MAC address. Entity IDs follow the pattern `domain.kwl_fraenkische_rohrwerke_<suffix>`.
+These work from the first poll, no learning required.
 
-Entities marked *(firmware)* are only created if your device's firmware exposes the required data — see [Capability Discovery](#how-capability-discovery-works).
+### Live sensor data
 
-### Fan
+Every value from `status.xml` is exposed: all four air temperatures, motor RPM and voltage for both fans, bypass state, current fan level, filter remaining days, party timer, and operating hours per level.
+
+### Real-time power from motor RPM — EC motor model
+
+`power_current` is computed continuously from the actual motor RPM using a two-parameter EC motor model:
+
+```
+P = P_base + k × (RPM / RPM_ref)³
+```
+
+`P_base` (~9 W) is the fixed overhead of the EC motor's control electronics and minimum field excitation — present at any fan speed. `k` is the aerodynamic component that follows the cubic fan law. Both parameters are derived automatically via least-squares from your four configured watt values and the measured RPM ratios.
+
+For the 400 touch with measured values 11 / 17.5 / 43.5 / 80 W:
+**P = 8.93 + 71.71 × (RPM / 2538)³** — R² = 0.9989, max residual 1.5 W.
+
+This model is significantly more accurate than a pure P ∝ n³ law, which would underestimate Stufe 1 by 72% (giving 3 W instead of the measured 11 W). The base overhead is why EC motors draw disproportionately more power at low speeds than the simple cubic law predicts. The sensor updates every poll and correctly tracks ramp-ups, party mode, and intermediate speeds.
+
+### Heat recovery efficiency
+
+`waermerueckgewinnungsgrad` shows supply-side η in real time, gated to temperature deltas ≥ 3K (below which sensor noise dominates). At 87–88% rated efficiency, summer values of 40–65% are completely normal when the bypass is open — the integration correctly suppresses misleading values in that regime.
+
+`rueckgewonnene_waermeleistung` estimates recovered heat watts using RPM-based airflow (Q ∝ RPM, anchored to the vendor's Bezugs-Volumenstrom).
+
+### Bypass hunting detection
+
+`binary_sensor.bypass_hunting` activates immediately. It watches the bypass for rapid open/closed cycling — more than 5 transitions in 60 minutes, or average open episode duration below 15 minutes. The device firmware has no awareness of actuator cycling frequency; this integration surfaces it.
+
+### Night cooling result tracking
+
+`night_cooling_last_k` and `night_cooling_7d_avg_k` record the actual T_abluft drop (°C/K) per Stufe-4 cooling activation. From day one you can see whether your summer cooling automation is genuinely cooling the building and by how much per session.
+
+### Maintenance alerts (Repair Issues)
+
+Active notifications appear in the HA Repairs panel:
+- Filter replacement due (device-reported via `filter0`)
+- Annual maintenance due (8760 cumulative operating hours)
+- Bypass leakage — heating mode (delta ≥ 5K) and summer mode (2–5K, bypass explicitly closed)
+- Motor asymmetry — >22% RPM deviation or reversed direction (exhaust faster than supply)
+
+---
+
+## Week one — baselines establish
+
+The `analytics_maturity` sensor shows 0–100% readiness. After approximately 4–8 hours of operation at each fan level, summer RPM baselines reach their minimum sample count (500 readings). Once established, these analytics become active:
+
+**`rpm_anomaly`** — fires when abluft RPM drops more than 3 standard deviations below the established baseline for the current level and season. Detects motor bearing wear. Unlike the hard-threshold asymmetry check, this alert is calibrated to your specific device's normal behaviour and adjusted for seasonal air density variation.
+
+**`ratio_anomaly`** — fires when the Zuluft/Abluft RPM ratio deviates from its baseline by more than 3σ. Your device structurally runs supply ~20% faster than exhaust. A shift indicates asymmetric degradation on one side.
+
+**`fan_law_max_deviation`** — maximum residual between your configured watt values and the two-parameter EC motor model prediction at the same RPMs, expressed as a percentage of P_Stufe4. For the 400 touch with measured values this reads ~1.9% (1.5 W max residual). Values above 5% trigger `fan_law_anomaly` and indicate either a measurement inconsistency or a motor anomaly. Note: a pure P ∝ n³ check would show 256% deviation at Stufe 1 on a perfectly healthy motor — that is why this integration uses the EC motor model instead.
+
+**`spi_stufe4`** — Specific Power Input at Stufe 4 in W/(m³/h). Record this value when you first set up. An increase of 15% or more on a re-measurement after months of operation is a direct signal that the motor draws more power for the same airflow — bearing wear or increased system resistance.
+
+---
+
+## First winter — full diagnostics activate
+
+These require the bypass to be closed, a minimum indoor-outdoor delta of 5–8K, and sufficient gated readings accumulated during the heating season.
+
+**`hre_abluftseite`** (ε_exhaust) — exhaust-side heat recovery efficiency. Measures how much heat the HRE extracted from the exhaust stream. Independent of the supply-side η, it characterises the exhaust half of the heat exchanger separately. Vendor rated: 87–88%.
+
+**`energy_balance_ratio`** — ratio of (T_abluft − T_fortluft) to (T_zuluft − T_aussenluft). In balanced flow this equals the Zuluft/Abluft RPM ratio (~1.20 for a typical installation). Deviation indicates sensor drift or asymmetric HRE fouling, and reveals which side is affected.
+
+**`wrg_unter_referenzwert`** — fires when η drops 8 percentage points below its established seasonal mean. In winter, a sustained drop below ~75% on a clean device indicates filter restriction or HRE fouling.
+
+---
+
+## Summer night cooling automation
+
+The integration ships with a validated two-part automation pair for automatic summer night pre-cooling.
+
+### What it does
+- Activates Stufe 4 between 22:00 and 07:00 when outdoor air is cooler than indoor by at least 3K (configurable)
+- Guards on dew point — prevents humid summer nights from increasing indoor humidity
+- Gates on `binary_sensor.kwl_sommertag`: either tomorrow's DWD forecast ≥ 25°C **or** indoor temperature already ≥ 24°C (captures warm-building nights independent of forecast)
+- Resets to Stufe 1 or 2 at sunrise/07:00 based on presence
+- Corrects firmware fan-level resets during the day without waiting for 22:00
+
+### Prerequisites
+
+Create two binary sensor helpers (Settings → Helpers → Template → Binary sensor):
+
+**`kwl_sommer_kuehlung_aktiv`**
+```
+{{ is_state_attr('fan.kwl_fraenkische_rohrwerke', 'preset_mode', 'Stufe 4 - Intensivlueftung') }}
+```
+
+**`kwl_sommertag`**
+```
+{% set schwelle = states('input_number.kwl_bypass_hitze_schwelle') | float(25) %}
+{% set morgen   = states('sensor.dwd_tagesmax_temperatur_morgen') | float(0) %}
+{% set abluft   = states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0) %}
+{{ morgen > schwelle or abluft >= 24 }}
+```
+
+Create these `input_number` helpers:
+
+| Helper | Value | Purpose |
+|---|---|---|
+| `kwl_bypass_delta_schwelle` | 3.0 | Outdoor must be this many K cooler than indoor to activate |
+| `kwl_bypass_delta_aus_schwelle` | 1.0 | Close threshold — gives 2K hysteresis |
+| `kwl_komfort_min_temperatur` | your preference | Minimum indoor T_abluft for cooling to activate |
+| `kwl_bypass_hitze_schwelle` | 25.0 | DWD forecast threshold for Sommertag |
+
+### Firmware bypass settings (required)
+
+Set both bypass Auto thresholds to minimum via the integration's number entities or the device web UI:
+- **Bypass Außenluft-Schwelle** → **13°C**
+- **Bypass Abluft-Schwelle** → **18°C**
+
+This prevents the device firmware from fighting the HA automation during the night cooling window.
+
+### Automation YAML
+
+Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` folder of this repository.
+
+---
+
+## All entities
+
+### Sensors — always active
+
+| Key | Description |
+|---|---|
+| `temp_abluft` | Extract air temperature |
+| `temp_zuluft` | Supply air temperature |
+| `temp_aussenluft` | Outdoor intake temperature |
+| `temp_fortluft` | Exhaust air temperature |
+| `motor_zuluft_rpm` | Supply fan RPM |
+| `motor_abluft_rpm` | Exhaust fan RPM |
+| `motor_zuluft_volt` | Supply motor voltage setpoint |
+| `motor_abluft_volt` | Exhaust motor voltage setpoint |
+| `bypass_status` | Bypass state string |
+| `current_level_text` | Current fan level |
+| `party_timer` | Party mode remaining (min) |
+| `system_message` | Device status string |
+| `heat_recovery_efficiency` | Supply-side η (%) — gated δ ≥ 3K |
+| `heat_recovery_watts` | Recovered heat estimate (W) — RPM-based |
+| `power_current` | Real-time power from RPM (W) |
+| `energy_level_1` through `_4` | Cumulative energy per level (kWh) |
+| `hours_level_1` through `_4` | Operating hours per level (h) |
+| `hours_frost` | Frost protection hours (h) |
+| `filter_total_days` | Filter total interval (days) |
+| `filter_residual_days` | Filter remaining days |
+
+### Sensors — analytics (diagnostic, disabled by default)
+
+| Key | Active from | Description |
+|---|---|---|
+| `analytics_maturity` | Day 1 | Baseline readiness 0–100% |
+| `analytics_season` | Day 1 | Current season (summer/winter) |
+| `bypass_open_pct` | Day 1 | % time bypass open (cumulative) |
+| `bypass_avg_open_min` | Day 1 | Avg open episode duration (min) |
+| `bypass_transitions_1h` | Day 1 | Transitions in last 60 min |
+| `night_cooling_last_k` | Day 1 | Last cooling activation delta (K) |
+| `night_cooling_7d_avg_k` | Day 1 | 7-day average cooling delta (K) |
+| `rpm_ratio` | Week 1 | Current Zu/Ab RPM ratio |
+| `fan_law_max_deviation` | Week 1 | Max watt vs fan law deviation (%) |
+| `spi_stufe4` | Week 1 | Specific Power Input Stufe 4 (W/m³/h) |
+| `eps_exhaust` | Winter | Exhaust-side HRE efficiency ε (%) |
+| `energy_balance_ratio` | Winter | Four-sensor energy balance ratio |
+
+### Binary sensors — always active
+
+| Key | Fires when |
+|---|---|
+| `filter_ok` | Filter needs replacement |
+| `frost_risk` | T_aussen < −5°C and T_zuluft < 5°C |
+| `bypass_leaking` | Fortluft tracks Aussenluft despite bypass closed |
+| `motor_asymmetry` | >22% RPM deviation or reversed direction |
+| `bypass_recommended` | Outdoor ≥ 3K cooler than indoor, T_ab > 22°C, T_au > 10°C |
+
+### Binary sensors — analytics (diagnostic, disabled by default)
+
+| Key | Active from | Fires when |
+|---|---|---|
+| `bypass_hunting` | Day 1 | >5 transitions/hour or avg open episode <15 min |
+| `rpm_anomaly` | Week 1 | Abluft RPM >3σ below level+season baseline |
+| `ratio_anomaly` | Week 1 | Zu/Ab ratio >3σ from baseline |
+| `eta_below_baseline` | Winter | η drops ≥8pp below seasonal baseline mean |
+| `fan_law_anomaly` | Week 1 | Any level >15% deviation from fan law prediction |
+
+### Controls
+
 | Entity | Description |
-|--------|-------------|
-| `fan.kwl_fraenkische_rohrwerke` | Ventilation — levels 1–4, percentage, preset mode |
-
-**Preset modes** — use these exact strings in automations (no umlauts):
-| Preset | Level | % | Default power |
-|--------|-------|----|---------------|
-| `Stufe 1 - Feuchteschutz` | 1 | 25% | 11 W |
-| `Stufe 2 - Reduziert` | 2 | 50% | 17.5 W |
-| `Stufe 3 - Nennlueftung` | 3 | 75% | 43.5 W |
-| `Stufe 4 - Intensivlueftung` | 4 | 100% | 80 W |
-
-> ⚠️ Use `Nennlueftung` not `Nennlüftung` — no umlauts in preset names.
-
-### Sensors
-| Suffix | Description | Unit | Firmware |
-|--------|-------------|------|----------|
-| `_aussenluft_temperatur` | Outdoor air temperature | °C | all |
-| `_zuluft_temperatur` | Supply air temperature (after heat exchanger) | °C | all |
-| `_abluft_temperatur` | Exhaust air temperature (indoor) | °C | all |
-| `_fortluft_temperatur` | Extract air temperature (outgoing) | °C | all |
-| `_aktuelle_leistung` | Current power consumption | W | all |
-| `_energie_stufe_1` to `_4` | Cumulative energy per level | kWh | all |
-| `_filter_gesamtlaufzeit` | Filter total lifetime | days | if supported |
-| `_filter_restlaufzeit` | Filter remaining lifetime | days | if supported |
-| `_aktuelle_stufe` | Current level (text) | — | all |
-| `_bypass_status` | Bypass status | — | all |
-| `_systemmeldung` | System message | — | all |
-| `_waermerueckgewinnungsgrad` | Heat recovery efficiency | % | if supported |
-| `_rueckgewonnene_waermeleistung` | Recovered heat output | W | if supported |
-| `_party_timer_restzeit` | Party timer remaining | min | all |
-| `_zuluft_motor_u_min` | Supply motor RPM | rpm | if supported |
-| `_abluft_motor_u_min` | Exhaust motor RPM | rpm | if supported |
-| `_zuluft_motor_spannung` | Supply motor voltage | V | if supported |
-| `_abluft_motor_spannung` | Exhaust motor voltage | V | if supported |
-
-**Disabled by default** (enable under Settings → Devices → KWL → sensors):
-| Suffix | Description | Unit |
-|--------|-------------|------|
-| `_betriebsstunden_stufe_1` to `_4` | Operating hours per level | h |
-| `_betriebsstunden_frostschutz` | Frost protection hours | h |
-| `_betriebsstunden_vorheizregister` | Pre-heater hours | h |
-
-### Binary sensors
-| Suffix | Description | Firmware |
-|--------|-------------|----------|
-| `_filter_ok` | Filter OK / needs replacement | all |
-| `_safety_manager` | Safety manager active | if supported |
-| `_passivhaus_modus` | Passive house mode active | if supported |
-| `_vorheizregister_aktiv` | Pre-heater active | if supported |
-| `_frost_risiko` | Frost risk for heat exchanger | if supported |
-| `_bypass_leckage` | Bypass leaking detected | if supported, disabled by default |
-| `_motor_asymmetrie` | Motor RPM asymmetry > 15% | if supported, disabled by default |
-| `_bypass_vorkuehlung_empfohlen` | Bypass pre-cooling recommended | if supported |
-| `_digital_input_1..3` | Digital inputs (physical wiring) | if supported, disabled by default |
-| `_digital_input_1` | Digital Input 1 (physical wiring) | if supported, disabled by default |
-| `_digital_input_2` | Digital Input 2 (physical wiring) | if supported, disabled by default |
-| `_digital_input_3` | Digital Input 3 (physical wiring) | if supported, disabled by default |
-
-### Number entities
-| Suffix | Description | Range | Firmware |
-|--------|-------------|-------|----------|
-| `_party_timer_nachlauf` | Party timer duration | 10–240 min | all |
-| `_bypass_schwelle_aussenluft` | Bypass trigger — outdoor temp | 13–18 °C | all |
-| `_bypass_schwelle_abluft` | Bypass trigger — exhaust temp | 18–25 °C | all |
-| `_kalibrierung_abluft` | Exhaust temp correction | ±4.9 °C | if supported |
-| `_kalibrierung_zuluft` | Supply temp correction | ±4.9 °C | if supported |
-| `_kalibrierung_fortluft` | Extract temp correction | ±4.9 °C | if supported |
-| `_kalibrierung_aussenluft` | Outdoor temp correction | ±4.9 °C | if supported |
-
-Airflow voltage calibration per level — disabled by default, installer firmware only.
-
-### Select entities
-| Suffix | Options | Firmware |
-|--------|---------|----------|
-| `_bypass_steuerung` | Manuell offen / Manuell zu / Automatisch | all |
-| `_steuerungsmodus` | Manual / Program | if `/wopla.htm` reachable |
-| `_sprache` | Deutsch / English / Francais / Italiano / Nederlands | all |
-| `_haustyp` | Eigenheim / Mietwohnung | installer only |
-| `_vorheizregister_modus` | Aktiv / Passiv | installer only |
-| `_safety_manager` | Mit / Ohne | installer only |
-| `_ext_sensor_1_typ` to `_4_typ` | Keiner / Feuchte (%H) / CO2 (ppm) | if supported |
-
-### Buttons
-| Suffix | Description | Firmware |
-|--------|-------------|----------|
-| `_filterfehler_bestaetigen` | Acknowledge filter alert | all |
-| `_externe_sensoren_umschalten` | Toggle external sensors | if supported |
+|---|---|
+| `fan.kwl_fraenkische_rohrwerke` | Fan level 1–4 |
+| `select.bypass_steuerung` | Automatisch / Manuell offen / Manuell zu |
+| `number.bypass_schwelle_aussenluft` | Bypass Auto threshold — outdoor (°C) |
+| `number.bypass_schwelle_abluft` | Bypass Auto threshold — extract (°C) |
+| `number.kalibrierung_*` | Temperature sensor offsets |
+| `number.party_timer_nachlauf` | Party mode duration |
+| `button.filterfehler_bestatigen` | Confirm filter replacement on device |
+| `button.analytics_baselines_zurucksetzen` | Reset all learned baselines |
 
 ---
 
-## Energy Dashboard
+## Options and calibration
 
-Add the four energy sensors as **Individual devices** in the HA Energy panel:
+Settings → Devices & Services → KWL → Configure
 
-**Settings → Energy → Individual devices → Add device**
+### Device model
+Select **profi-air 250 touch** or **profi-air 400 touch**. Sets model-appropriate default watt values and activates model-specific airflow estimation.
 
-Add all four: `sensor.kwl_fraenkische_rohrwerke_energie_stufe_1` through `_4`
+### Power reference values
+Four individually configurable watt values — one per fan level. The 400 touch defaults are actual clamp meter measurements (11 / 17.5 / 43.5 / 80 W, measured since v1.1). The 250 touch defaults are estimates — measure your own installation for accurate energy accounting.
 
-HA automatically sums daily and monthly totals. Combined with the operating hours sensors you get a full picture of how your KWL distributes runtime across levels.
+All four values feed into cumulative energy calculation (`energy_level_X` sensors). They also drive the EC motor model: the integration derives P_base and k_aero automatically via least-squares from all four measurements, so accurate values at every level improve both the energy accounting and the real-time `power_current` accuracy.
 
----
-
-## Automation examples
-
-The integration exposes entities that HA automations can use directly — no polling, no templates unless needed. All examples below use the correct HA 2024.8+ syntax (`triggers:`, `actions:`, `action:` instead of `service:`).
-
----
-
-### Helpers required
-
-Create these helpers once in **Settings → Devices & Services → Helpers**:
-
-| Helper | Type | Suggested value |
-|--------|------|----------------|
-| `input_number.kwl_bypass_delta_schwelle` | Number | 2 (°C delta Außen/Innen) |
-| `input_number.kwl_bypass_hitze_schwelle` | Number | 28 (°C Vorhersage-Schwelle) |
+### Poll interval
+Default 30 seconds. Range 30–300 s. Shorter intervals give more accurate analytics and more responsive automations.
 
 ---
 
-### 1 — Summer night pre-cooling (complete, production-ready)
+## After filter replacement
 
-Opens bypass and sets level 3 when pre-cooling makes sense. Closes again at 07:45 to ensure the 10-minute stability timer cannot slip past 08:00.
+Motor RPM will shift slightly after filter replacement as the system runs against lower resistance. The analytics engine will detect this as an anomaly until it recalibrates.
 
-**Requires:** `sensor.dwd_tagesmax_temperatur_morgen` — see [DWD template sensor](#dwd-forecast-sensor) below.
+After every filter replacement:
+1. Press `button.kwl_analytics_baselines_zurucksetzen` to clear all learned baselines
+2. Confirm the filter reset on the device (`button.kwl_filterfehler_bestatigen` or device touchscreen)
+3. The analytics engine rebuilds baselines over the next 4–8 operating hours
 
-```yaml
-alias: KWL Bypass Sommer-Kühlung
-description: >
-  Öffnet Bypass nachts wenn Vorkühlung sinnvoll ist.
-  Alle Schwellen über Helfer in der UI einstellbar.
-triggers:
-  - trigger: template
-    value_template: >
-      {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') | float(0)
-         < states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0)
-           - states('input_number.kwl_bypass_delta_schwelle') | float(0) }}
-    for: "00:10:00"
-  - trigger: time
-    at: "22:00:00"
-conditions:
-  - condition: time
-    after: "22:00:00"
-    before: "07:45:00"
-  - condition: numeric_state
-    entity_id: sensor.kwl_fraenkische_rohrwerke_abluft_temperatur
-    above: 22
-  - condition: template
-    value_template: >
-      {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') | float(0)
-         < states('sensor.kwl_fraenkische_rohrwerke_abluft_temperatur') | float(0)
-           - states('input_number.kwl_bypass_delta_schwelle') | float(0) }}
-  - condition: numeric_state
-    entity_id: sensor.dwd_tagesmax_temperatur_morgen
-    above: input_number.kwl_bypass_hitze_schwelle
-  - not:
-      - condition: state
-        entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-        state: Manuell offen
-actions:
-  - action: select.select_option
-    target:
-      entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-    data:
-      option: Manuell offen
-  - action: fan.set_preset_mode
-    target:
-      entity_id: fan.kwl_fraenkische_rohrwerke
-    data:
-      preset_mode: "Stufe 3 - Nennlueftung"
-mode: single
-```
-
-**Why these conditions?**
-- `for: "00:10:00"` — 10-minute stability filter prevents false triggers from short temperature spikes
-- `before: "07:45:00"` — 15-minute buffer before 08:00 ensures the timer cannot fire after morning close
-- `dwd_tagesmax_temperatur_morgen above 28` — only pre-cool when tomorrow will actually be hot
-- `not: Manuell offen` — idempotent, prevents duplicate triggers
+The new baselines reflect your clean-filter state and provide a fresh reference for future degradation detection.
 
 ---
 
-### 2 — Summer morning close (combined)
+## Firmware bypass settings
 
-Closes bypass if open and drops to level 1. Both cases (bypass was open / was already closed) handled in one automation.
+The bypass has two configurable firmware thresholds in the installer section:
 
-```yaml
-alias: KWL Sommer Morgen
-description: >
-  Jeden Sommermorgen um 08:00: Bypass schließen (falls offen) und auf Stufe 1.
-triggers:
-  - trigger: time
-    at: "08:00:00"
-conditions:
-  - condition: numeric_state
-    entity_id: sensor.kwl_fraenkische_rohrwerke_abluft_temperatur
-    above: 20
-actions:
-  - if:
-      - condition: state
-        entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-        state: Manuell offen
-    then:
-      - action: select.select_option
-        target:
-          entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-        data:
-          option: Automatisch
-  - action: fan.set_preset_mode
-    target:
-      entity_id: fan.kwl_fraenkische_rohrwerke
-    data:
-      preset_mode: "Stufe 1 - Feuchteschutz"
-mode: single
-```
+**For summer cooling automation users:** set both to minimum to give HA full control:
+- Außenluft-Schwelle → **13°C**
+- Abluft-Schwelle → **18°C**
 
-**Why no month condition?** The `abluft_temperatur above 20` condition is a better proxy than `now().month in [5..9]` — it handles warm October days correctly and skips the close on cold summer mornings when it already ran idle.
+**For users without automation:** consider raising slightly above factory defaults (15°C / 20°C) to add hysteresis. Bypass hunting at marginal temperatures accelerates actuator wear.
 
 ---
 
-### 3 — Bypass pre-cooling recommended sensor
+## Energy dashboard
 
-Since v1.3.0 the integration calculates `binary_sensor.kwl_bypass_vorkuehlung_empfohlen` directly. Use it as a simpler trigger:
+1. Settings → Dashboards → Energy → Add Consumption
+2. Add `sensor.kwl_energie_stufe_1` through `_4` as individual sources
+3. Label Stufe 1 through Stufe 4
 
-```yaml
-alias: KWL Bypass öffnen wenn empfohlen
-triggers:
-  - trigger: state
-    entity_id: binary_sensor.kwl_fraenkische_rohrwerke_bypass_vorkuehlung_empfohlen
-    to: "on"
-    for: "00:10:00"
-conditions:
-  - condition: time
-    after: "22:00:00"
-    before: "07:45:00"
-  - condition: numeric_state
-    entity_id: sensor.dwd_tagesmax_temperatur_morgen
-    above: input_number.kwl_bypass_hitze_schwelle
-actions:
-  - action: select.select_option
-    target:
-      entity_id: select.kwl_fraenkische_rohrwerke_bypass_steuerung
-    data:
-      option: Manuell offen
-  - action: fan.set_preset_mode
-    target:
-      entity_id: fan.kwl_fraenkische_rohrwerke
-    data:
-      preset_mode: "Stufe 3 - Nennlueftung"
-mode: single
-```
-
----
-
-### 4 — Presence-aware ventilation
-
-Drop to minimum when nobody is home, return to normal when someone arrives.
-
-```yaml
-alias: KWL Anwesenheitssteuerung
-triggers:
-  - trigger: state
-    entity_id: group.alle_personen
-    to: "not_home"
-  - trigger: state
-    entity_id: group.alle_personen
-    from: "not_home"
-actions:
-  - choose:
-      - conditions:
-          - condition: state
-            entity_id: group.alle_personen
-            state: not_home
-        sequence:
-          - action: fan.set_preset_mode
-            target:
-              entity_id: fan.kwl_fraenkische_rohrwerke
-            data:
-              preset_mode: "Stufe 1 - Feuchteschutz"
-      - conditions:
-          - condition: state
-            entity_id: group.alle_personen
-            state: home
-        sequence:
-          - action: fan.set_preset_mode
-            target:
-              entity_id: fan.kwl_fraenkische_rohrwerke
-            data:
-              preset_mode: "Stufe 2 - Reduziert"
-mode: single
-```
-
----
-
-### 5 — Heat recovery efficiency alert
-
-React to the `heat_recovery_efficiency` sensor dropping below 65% — sign of a dirty filter or leaking bypass.
-
-```yaml
-alias: KWL Wärmerückgewinnung niedrig
-triggers:
-  - trigger: numeric_state
-    entity_id: sensor.kwl_fraenkische_rohrwerke_waermerueckgewinnungsgrad
-    below: 65
-    for: "02:00:00"
-actions:
-  - action: notify.mobile_app_dein_handy
-    data:
-      title: "KWL Wärmerückgewinnung niedrig"
-      message: >
-        Aktuell {{ states('sensor.kwl_fraenkische_rohrwerke_waermerueckgewinnungsgrad') }}%.
-        Filter prüfen oder Wärmetauscher reinigen.
-mode: single
-```
-
----
-
-### 6 — Frost risk protection
-
-Reduce to level 1 when frost risk is detected to protect the heat exchanger.
-
-```yaml
-alias: KWL Frostschutz
-triggers:
-  - trigger: state
-    entity_id: binary_sensor.kwl_fraenkische_rohrwerke_frost_risiko
-    to: "on"
-    for: "00:05:00"
-actions:
-  - action: fan.set_preset_mode
-    target:
-      entity_id: fan.kwl_fraenkische_rohrwerke
-    data:
-      preset_mode: "Stufe 1 - Feuchteschutz"
-  - action: notify.mobile_app_dein_handy
-    data:
-      title: "KWL Frostschutz aktiv"
-      message: >
-        Außenluft {{ states('sensor.kwl_fraenkische_rohrwerke_aussenluft_temperatur') }}°C,
-        Zuluft {{ states('sensor.kwl_fraenkische_rohrwerke_zuluft_temperatur') }}°C.
-        Lüftung auf Stufe 1 reduziert.
-mode: single
-```
-
----
-
-### DWD forecast sensor
-
-Required for automations 1–3. Uses FL550 hourly data from `sensor.nuernberg_temperatur`.
-
-```yaml
-template:
-  - sensor:
-      - name: "DWD Tagesmax Temperatur Morgen"
-        unique_id: dwd_tagesmax_temperatur_morgen
-        state: >
-          {% set data = state_attr('sensor.nuernberg_temperatur', 'data') %}
-          {% set morgen = (now() + timedelta(days=1)).strftime('%Y-%m-%d') %}
-          {% set werte = data | selectattr('datetime', 'search', morgen)
-                              | map(attribute='value') | list %}
-          {{ werte | max | float(0) if werte else 0 }}
-        unit_of_measurement: "°C"
-        state_class: measurement
-```
-
-Adjust `sensor.nuernberg_temperatur` to your DWD station. Find the entity name under **Developer Tools → States** and filter by `nuernberg` or your city.
-
----
-
-### Preset mode names (exact strings for automations)
-
-| Preset | Level | % | Default W |
-|--------|-------|---|-----------|
-| `Stufe 1 - Feuchteschutz` | 1 | 25% | 11.0 |
-| `Stufe 2 - Reduziert` | 2 | 50% | 17.5 |
-| `Stufe 3 - Nennlueftung` | 3 | 75% | 43.5 |
-| `Stufe 4 - Intensivlueftung` | 4 | 100% | 80.0 |
-
-> ⚠️ Note the spelling: `Nennlueftung` and `Intensivlueftung` — single `e`, no umlaut. These are the internal API names used in automations. HA displays them with the correct umlaut in the UI via translations.
-
----
-
-## Feature comparison
-
-### This integration vs. profi-air-touch
-
-| Feature | This integration | [profi-air-touch](https://github.com/desue90/profi-air-touch) |
-|---------|:---:|:---:|
-| **Target models** | Profi-Air 400 classic, 250 Touch, 400 Touch (all auto-detected) | Profi-Air 250/400 Touch only |
-| **Capability auto-detection** | ✅ v1.1.0 | ❌ |
-| **Firmware-adaptive entities** | ✅ | ❌ |
-| **DataUpdateCoordinator** | ✅ | ❌ planned |
-| **Single poll for all entities** | ✅ | ❌ per-entity polls |
-| **MAC as stable device ID** | ✅ | ❌ hardcoded string |
-| **Connection test on setup** | ✅ | ❌ |
-| **Re-auth flow** | ✅ | ❌ |
-| **Reconfigure flow** | ✅ | ❌ |
-| **Repair issues** | ✅ | ❌ |
-| **Diagnostics with capability report** | ✅ | ❌ |
-| **Time synchronisation** | ✅ auto-detected | ❌ |
-| **Energy kWh sensors** | ✅ | ❌ |
-| **Binary sensors** | ✅ | ❌ |
-| **Motor RPM + voltage** | ✅ if firmware | ❌ |
-| **Installer settings (BasicAuth)** | ✅ if firmware | ❌ |
-| **Configurable watt values** | ✅ | ❌ |
-| **Optimistic updates** | ✅ | ❌ |
-| **Filter remaining days** | ✅ | ✅ |
-| **Language select** | ✅ | ✅ |
-| **Program/Manual control** | ✅ | ✅ |
-| **Unit tests** | ✅ 151 | ❌ |
-| **Quality Scale** | 🏆 Platinum | not declared |
-
-### Feature availability by firmware version
-
-| Feature | Full firmware | Minimal firmware |
-|---------|:---:|:---:|
-| All 4 temperatures | ✅ | ✅ |
-| Bypass control | ✅ | ✅ |
-| Filter status (OK/replace) | ✅ | ✅ |
-| Filter remaining days | ✅ | ✅ |
-| Language select | ✅ | ✅ |
-| Program/Manual control | ✅ | ✅ |
-| Energy kWh sensors | ✅ | ✅ |
-| Operating hours per level | ✅ | ✅ |
-| Motor RPM + voltage | ✅ | ❌ auto-hidden |
-| Airflow voltage calibration | ✅ | ❌ auto-hidden |
-| Temperature corrections | ✅ | ❌ auto-hidden |
-| External sensors (CO2/humidity) | ✅ | ❌ auto-hidden |
-| Safety manager | ✅ | ❌ auto-hidden |
-| Pre-heater register | ✅ | ❌ auto-hidden |
-| Installer settings (BasicAuth) | ✅ | ❌ auto-hidden |
-| Time synchronisation | ✅ | depends on firmware |
-
-**Auto-hidden** = entity is simply not created. No `unavailable` state, no clutter in your dashboard.
+The kWh values are calculated from operating hours × configured watt values. Measure actual power at each level for best accuracy.
 
 ---
 
 ## Troubleshooting
 
-### Integration fails to load
-Check **Settings → System → Logs**. Common causes:
-- Wrong files copied → replace the entire `kwl_fraenkische/` folder and restart HA
-- HA version too old → 2026.3 minimum required
+**Integration shows unavailable**
+Verify `http://YOUR_KWL_IP/status.xml` returns XML data. Check network routing if the KWL is on a different subnet.
 
-### Cannot connect during setup
-- KWL and HA must be on the same network segment
-- Browser test: `http://YOUR_KWL_IP/status.xml` must return XML
-- Docker: check `host` network mode
+**Installer credentials rejected**
+Try factory defaults `install` / `konfig12`. If they fail, retrieve the current password from `.storage/core.config_entries` in your HA config directory.
 
-### Entity unavailable
-```bash
-curl -s http://10.10.4.1/status.xml | head -5
-```
-No XML response → KWL not reachable. Check network and IP address.
+**Bypass hunting persists after firmware threshold change**
+The outdoor temperature is oscillating around the control threshold. Increase both thresholds by 2–3°C. Alternatively check the bypass actuator for mechanical stiffness or the temperature sensor for calibration drift.
 
-### Expected entity not appearing
-Since v1.1.0, entities are only created if your firmware supports them. Check what was detected:
+**Night cooling automation does not activate**
+Check `binary_sensor.kwl_sommertag` — if off, tomorrow's DWD forecast is below your threshold and indoor temperature is below 24°C. Also verify the dew point condition: `sensor.kwl_taupunkt_aussen` must be below `sensor.kwl_taupunkt_innen`.
 
-**Settings → Devices & Services → KWL → ⋮ → Download diagnostics**
+**`analytics_maturity` low after days of operation**
+Summer RPM baselines establish after ~4h each. Winter baselines require actual heating season conditions. 100% maturity is only reachable after the first complete winter. All alerts from unestablished baselines are suppressed automatically.
 
-Look at `capabilities.available_tags` and `capabilities.reachable_endpoints` — if the required tag or endpoint is missing, the entity won't be created. To refresh after a firmware update: restart HA.
-
-### Automation fails with `not_valid_preset_mode`
-Preset names must match exactly — no umlauts:
-```
-Stufe 1 - Feuchteschutz
-Stufe 2 - Reduziert
-Stufe 3 - Nennlueftung
-Stufe 4 - Intensivlueftung
-```
-Verify: **Developer Tools → States → `fan.kwl_fraenkische_rohrwerke`** → attribute `preset_modes`
-
-### Wrong credentials (401)
-HA shows a re-auth dialog automatically. Or manually:
-**Settings → Devices & Services → KWL → ⋮ → Re-authenticate**
-
-### Download diagnostics
-**Settings → Devices & Services → KWL → ⋮ → Download diagnostics**
-
-Includes: capability report, available tags, reachable endpoints, unknown tags, current sensor values. Password and MAC are automatically redacted.
+**Entity names are in German on an English HA**
+Entity IDs are frozen at first registration per HA convention. New installations on English HA will receive English IDs from the start. Existing installations keep their German IDs — renaming them would break automations and dashboards.
 
 ---
 
-## HTTP endpoints reference
+## Known firmware behaviour
 
-| Endpoint | Method | Auth | Description | Auto-detected |
-|----------|--------|------|-------------|:---:|
-| `/status.xml` | GET | — | All status values (polled every 30 s) | always |
-| `/stufe.cgi?stufe=N` | GET | — | Set ventilation level 1–4 | always |
-| `/setup.htm` | POST | — | User settings (bypass, language, corrections) | always |
-| `/wopla.htm` | POST | — | Weekly program / manual control switch | ✅ probed |
-| `/time.htm` | POST | — | Time synchronisation | ✅ probed |
-| `/filter.cgi?filter=1` | GET | — | Acknowledge filter alert | always |
-| `/sensor.cgi?sensor=1` | GET | — | Toggle external sensors | always |
-| `/install/install.htm` | POST | Basic Auth | Installer settings | ✅ probed |
+**Bypass reverts `Manuell offen` automatically**
+The firmware treats `Manuell offen` as a temporary state and reverts to `Auto` within seconds. This is intentional. The summer cooling automation is designed around this: it controls fan level (stable) and relies on the firmware Auto logic for bypass, with thresholds set to their minimum values.
 
-Probed endpoints are tested once on startup (3 s timeout). If unreachable, they are never called again — no wasted requests.
+**Operating hours and clock drift**
+The device has no NTP access. Clock drift accumulates over the device lifetime (typical 10–20% fast over 10+ years). Operating hours are accurate relative to each other and for per-level comparison; absolute values may be inflated. The maintenance alert fires on the device's own counter, which is internally consistent.
 
----
-
-## Known limitations
-
-- The KWL **cannot be switched off** — level 1 is the minimum operation
-- The device's built-in weekly schedule is not imported into HA — use HA automations for scheduling (more powerful anyway)
-- External sensors (CO2, humidity) only appear when physically connected and configured on the device
-- Auto-discovery of the KWL IP is not possible — no mDNS/SSDP on the device
+**Party mode**
+Party mode activates Stufe 4 for a device-side timer. The fan entity correctly reports `Stufe 4 - Intensivlueftung` during party mode. The `kwl_sommer_kuehlung_aktiv` helper reads `on` during party mode, which is correct.
 
 ---
 
 ## Changelog
 
-### v1.3.0 (2026-05-31)
-- 7 new binary sensors: frost risk, bypass leakage, motor asymmetry, bypass recommendation, digital inputs 1–3
-- 2 new sensors: heat recovery efficiency (η %), recovered heat output (W)
-- Repair Issues for bypass leakage and motor asymmetry (3-poll threshold)
-- Annual maintenance Repair Issue (> 8760 operating hours)
-- Options Flow — poll interval (30–300 s) and watt values adjustable after setup
-- `async_migrate_entry` — automatic v1→v2 migration
-- `entity_category` CONFIG/DIAGNOSTIC on all entities
-- Complete EN + DE translations for all entities
-- Minimum XML tag validation
-- Fixed: setup order, `await _get_session()`, `control_mode`, all derived sensors registered
-- Fixed: reconfigure preserves watt values, annual maintenance issue deleted after confirmation
-- Fixed: 3-poll threshold for defect repair issues
-- 218 automated tests
+### v1.4.0
 
-### v1.2.0 (2026-05-22)
-- Digital inputs DiIn1/2/3 as binary sensors (disabled by default)
-- All firmware v2 tags added to ALL_KNOWN_TAGS — zero unknown tag warnings
+**Self-calibrating analytics engine**
+New `analytics.py` — pure Python, zero HA imports. Welford online statistics per level and season. Persistent storage via `Store` with 30-minute debounced writes. Baselines: RPM per level × season, Zu/Ab ratio, η supply-side, ε exhaust-side, four-sensor energy balance, bypass episodes, night cooling events.
 
-### v1.1.0 (2026-05-21)
-- Capability Discovery — automatic detection of firmware features
-- No unavailable entities for unsupported features
-- Unknown tags logged with GitHub issue link
+**New entities**
+bypass_hunting, rpm_anomaly, ratio_anomaly, eta_below_baseline, fan_law_anomaly binary sensors. bypass_open_pct, bypass_avg_open_min, bypass_transitions_1h, night_cooling_last/7d, rpm_ratio, fan_law_max_deviation, spi_stufe4, eps_exhaust, energy_balance_ratio, analytics_maturity, analytics_season sensors. Analytics reset button.
 
-### v1.0.0 (2026-05-20)
-- Initial release
+**Diagnostic improvements**
+motor_asymmetry threshold 25% → 22% with direction check. bypass_leaking adds summer-mode path. η gate raised 1.5K → 3.0K with seasonal context in docstring. bypass_recommended threshold aligned 2K → 3K. Unknown tags logged once only (was: every poll).
+
+**Power and energy — EC motor model**
+`power_current` uses the two-parameter EC motor model P = P_base + k × (RPM/RPM_ref)³, where P_base and k_aero are derived automatically per least-squares from the configured watt values and measured RPM ratios. For the 400 touch (measured 11/17.5/43.5/80 W): P_base = 8.93 W, k = 71.71 W, R² = 0.9989. A pure P ∝ n³ law would underestimate Stufe 1 by 72%; the EC overhead model eliminates this error. `heat_recovery_watts` uses RPM-based airflow (Q = Q_ref × RPM/RPM_ref). `fan_law_anomaly` threshold is 5% of P_Stufe4 against two-parameter residuals — was 15% against pure cubic (which would have fired falsely on every healthy motor). 400 touch watt defaults restored to measured values (11/17.5/43.5/80 W); 250 touch defaults are estimates (4/8/23/45 W).
+
+**Configuration**
+Device model selector (250 / 400 touch) in options flow. `RPM_DEFAULTS` added to const.py for use before analytics baseline is established. Translation keys activated on all entity classes for proper EN/DE support.
+
+### v1.3.1 and earlier
+See [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+*MIT License — see [LICENSE](LICENSE)*
