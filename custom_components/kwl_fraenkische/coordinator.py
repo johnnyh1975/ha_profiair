@@ -29,13 +29,16 @@ from .analytics import (
 
 from .const import (
     ALL_KNOWN_TAGS,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
+    CONF_MODEL, CONF_SCAN_INTERVAL,
+    DEFAULT_MODEL, DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ENDPOINT_INSTALL,
     ENDPOINT_TIME,
     ENDPOINT_WOPLA,
+    MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
     REQUIRED_XML_TAGS,
+    RPM_DEFAULTS,
+    VOLUMENSTROM_REF,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -638,22 +641,28 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         # HA-verwaltete Session -- wird automatisch mit HA lifecycle verwaltet
         self._session = async_get_clientsession(hass)
 
+        # Modellspezifischer Gerätename -- bestimmt den Entity-ID-Prefix
+        model = entry.options.get(CONF_MODEL, DEFAULT_MODEL)
+        model_display = {
+            MODEL_PROFI_AIR_400: "Profi-Air 400 touch",
+            MODEL_PROFI_AIR_250: "Profi-Air 250 touch",
+        }.get(model, "Profi-Air")
+
         # Einheitliches Device-Info fuer alle Entities dieser Integration
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self._mac_id)},
-            name="KWL",
+            name=model_display,
             manufacturer="Fraenkische Rohrwerke",
-            model="Profi-Air",
+            model=model_display,
             sw_version=None,
             configuration_url=f"http://{host}",
         )
 
     async def async_setup(self) -> None:
-        """Wird nach dem ersten erfolgreichen Datenabruf aufgerufen.
+        """Wird nach dem ersten erfolgreichen Datenabruf aufgerufen."""
+        from homeassistant.helpers.event import async_track_time_interval
+        from datetime import timedelta
 
-        Startet die automatische Zeitsynchronisation und laedt die
-        Analytics-Baselines aus dem persistenten Speicher.
-        """
         # Analytics persistenter Speicher (pro Config Entry)
         self._store = Store(
             self.hass,
@@ -665,6 +674,19 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         _LOGGER.debug(
             "KWL Analytics geladen -- Reifegrad %.1f%%",
             self._analytics.analytics_maturity_pct,
+        )
+
+        # Periodischer Analytics-Speicher alle 30 Minuten unabhaengig vom Poll-Intervall.
+        # async_delay_save allein reicht nicht -- es wird bei jedem 30s-Poll zurueckgesetzt
+        # und wuerde ohne Pause nie feuern.
+        async def _periodic_analytics_save(_now=None) -> None:
+            if self._analytics is not None and self._store is not None:
+                await self._store.async_save(self._analytics.to_dict())
+
+        self.config_entry.async_on_unload(
+            async_track_time_interval(
+                self.hass, _periodic_analytics_save, timedelta(minutes=30)
+            )
         )
 
         await self._async_sync_time()
@@ -889,13 +911,17 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
                 fan_at_level_4=(data.current_level == 4),
             )
             self._analytics.update(snap, poll_interval_s=float(scan_s))
-            self._store.async_delay_save(self._analytics.to_dict, 1800)
 
         return data
 
     def _get_session(self) -> aiohttp.ClientSession:
         """Gibt die HA-verwaltete aiohttp Session zurueck."""
         return self._session  # type: ignore[no-any-return]
+
+    @property
+    def model_slug(self) -> str:
+        """Modell-Slug fuer Entity-ID-Generierung: 'profi_air_400' oder 'profi_air_250'."""
+        return self.config_entry.options.get(CONF_MODEL, DEFAULT_MODEL)
 
     @property
     def analytics(self) -> KWLAnalytics | None:

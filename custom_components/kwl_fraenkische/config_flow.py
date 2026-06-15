@@ -1,6 +1,7 @@
 """Config Flow fuer die KWL Fraenkische Rohrwerke Integration."""
 from __future__ import annotations
 
+import logging
 from xml.etree import ElementTree
 
 import aiohttp
@@ -10,12 +11,16 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
 from .const import (
-    CONF_MODEL, CONF_SCAN_INTERVAL, CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2,
-    CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
-    DEFAULT_MODEL, DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
+    CONF_MODEL, CONF_PROTOCOL, CONF_SCAN_INTERVAL,
+    CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
+    DEFAULT_MODEL, DEFAULT_MODBUS_PORT, DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
     DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL,
-    MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400, WATT_DEFAULTS,
+    MODEL_DISPLAY, MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
+    PROTOCOL_HTTP, PROTOCOL_MODBUS,
+    UNIT_TYPE_TO_MODEL, WATT_DEFAULTS, WATT_MAX,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 DEFAULT_HOST = "10.10.4.1"
 DEFAULT_USERNAME = "install"
@@ -36,39 +41,113 @@ STEP_AUTH_SCHEMA = vol.Schema(
 
 
 class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
-    """Zweistufiger Config Flow:
-    Schritt 1 -- IP-Adresse eingeben und Verbindung pruefen
-    Schritt 2 -- Installateur-Zugangsdaten eingeben und pruefen
+    """Config Flow: Protokoll-Erkennung → touch- oder flex-Pfad.
+
+    Touch-Pfad (HTTP XML):
+      1. IP → HTTP-Probe → installer_menu (Zugangsdaten eingeben / überspringen)
+      2. auth (optional) → watt → Entry erstellen
+
+    Flex-Pfad (Modbus TCP):
+      1. IP → HTTP-Probe schlägt fehl → Modbus-Probe → confirm_flex
+      2. Bestätigung → Entry erstellen (Watt-Werte in Options konfigurieren)
     """
 
-    VERSION = 2
+    VERSION = 4
 
     def __init__(self) -> None:
         self._host: str = ""
         self._mac: str = ""
         self._username: str = ""
         self._password: str = ""
+        # Flex-Pfad
+        self._protocol: str = PROTOCOL_HTTP
+        self._detected_model: str = DEFAULT_MODEL
+        self._firmware_version: str = ""
+        self._switch_position: str = "?"
 
     async def async_step_user(self, user_input: dict[str, str] | None = None) -> ConfigFlowResult:
-        """Schritt 1: IP-Adresse."""
+        """Schritt 1: IP-Adresse → Protokoll-Erkennung."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
-            result = await _fetch_device_info(host)
 
-            if isinstance(result, str):
-                errors["base"] = result
-            else:
+            # ── HTTP-Probe (touch) ────────────────────────────────────────────
+            result = await _fetch_device_info(host)
+            if not isinstance(result, str):
                 self._host = host
                 self._mac = result["mac"]
-                # Weiter zu Schritt 2: Auth
-                return await self.async_step_auth()
+                self._protocol = PROTOCOL_HTTP
+                return await self.async_step_installer_menu()
+
+            # ── Modbus-Probe (flex / flat) ────────────────────────────────────
+            flex_result = await _probe_modbus(host)
+            if flex_result is not None:
+                self._host = host
+                self._mac = flex_result["mac_id"]
+                self._protocol = PROTOCOL_MODBUS
+                self._detected_model = flex_result["model"]
+                self._firmware_version = flex_result["firmware"]
+                self._switch_position = flex_result["switch_position"]
+                return await self.async_step_confirm_flex()
+
+            errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_installer_menu(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Menu: Installateur-Zugangsdaten eingeben oder überspringen.
+
+        Mit Zugangsdaten: voller Schreibzugriff (Stufen, Betriebsmodus).
+        Ohne Zugangsdaten: nur Lesen (status.xml ist öffentlich).
+        """
+        return self.async_show_menu(
+            step_id="installer_menu",
+            menu_options=["auth", "skip_installer"],
+        )
+
+    async def async_step_skip_installer(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Installateur-Zugangsdaten überspringen → nur Lesemodus."""
+        self._username = ""
+        self._password = ""
+        return await self.async_step_watt()
+
+    async def async_step_confirm_flex(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Flex/Flat-Gerät bestätigen und Entry erstellen."""
+        if user_input is not None:
+            await self.async_set_unique_id(self._mac)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: self._host})
+            model_name = MODEL_DISPLAY.get(self._detected_model, self._detected_model)
+            return self.async_create_entry(
+                title=f"{model_name} ({self._host})",
+                data={
+                    CONF_HOST: self._host,
+                    CONF_PROTOCOL: PROTOCOL_MODBUS,
+                    "mac": self._mac,
+                    "model": self._detected_model,
+                    "firmware": self._firmware_version,
+                },
+            )
+
+        return self.async_show_form(
+            step_id="confirm_flex",
+            data_schema=vol.Schema({}),  # Nur Bestätigung, keine Eingaben
+            description_placeholders={
+                "model": MODEL_DISPLAY.get(self._detected_model, self._detected_model),
+                "firmware": self._firmware_version,
+                "switch": self._switch_position,
+                "host": self._host,
+            },
         )
 
     async def async_step_auth(self, user_input: dict[str, str] | None = None) -> ConfigFlowResult:
@@ -103,7 +182,7 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     async def async_step_watt(
         self, user_input=None
     ) -> ConfigFlowResult:
-        """Schritt 3: Nennleistung pro Stufe konfigurieren."""
+        """Watt-Konfiguration (touch-Pfad). Flex überspringt diesen Schritt."""
         if user_input is not None:
             await self.async_set_unique_id(self._mac)
             self._abort_if_unique_id_configured(
@@ -113,6 +192,7 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
                 title=f"KWL ({self._host})",
                 data={
                     CONF_HOST: self._host,
+                    CONF_PROTOCOL: PROTOCOL_HTTP,
                     "mac": self._mac,
                     CONF_USERNAME: self._username,
                     CONF_PASSWORD: self._password,
@@ -246,12 +326,16 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
 
 class KWLOptionsFlow(OptionsFlow):
-    """Options Flow fuer konfigurierbare Parameter nach dem Setup.
+    """Options Flow: Konfigurierbare Parameter nach dem Setup.
 
-    Erlaubt Aenderung von:
-    - Geraetemodell (profi-air 250 touch / profi-air 400 touch)
-    - Poll-Intervall (30-300 Sekunden)
-    - Nennleistung pro Stufe (fuer korrekte Energieberechnung)
+    Touch (HTTP):
+      - Gerätemodell (250 / 400 touch)
+      - Poll-Intervall
+      - Nennleistung Stufe 1–4 (Pflichtfeld, Standardwerte vorhanden)
+
+    Flex / Flat (Modbus):
+      - Poll-Intervall
+      - Nennleistung Stufe 1–4 (Optional; None = Energieberechnung deaktiviert)
     """
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -260,18 +344,30 @@ class KWLOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
-        """Einziger Schritt -- alle Optionen auf einer Seite."""
+        """Einziger Schritt — alle Optionen auf einer Seite."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
+        protocol = self._entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
         current = self._entry.options
         data = self._entry.data
 
-        # Aktuelles Modell -- bestimmt die Watt-Standardwerte
+        if protocol == PROTOCOL_MODBUS:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=self._flex_schema(current, data),
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self._touch_schema(current, data),
+        )
+
+    def _touch_schema(self, current: dict, data: dict) -> vol.Schema:
+        """Schema für touch-Einträge (Pflicht-Watt-Felder, Modell-Selektor)."""
         current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
         model_watt_defaults = WATT_DEFAULTS.get(current_model, DEFAULT_WATT)
 
-        schema = vol.Schema({
+        return vol.Schema({
             vol.Required(
                 CONF_MODEL,
                 default=current_model,
@@ -305,7 +401,113 @@ class KWLOptionsFlow(OptionsFlow):
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
         })
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+    def _flex_schema(self, current: dict, data: dict) -> vol.Schema:
+        """Schema für flex/flat-Einträge (optionale Watt-Felder, kein Modell-Selektor).
+
+        Watt-Werte sind Optional — None = Energieberechnung deaktiviert.
+        WATT_MAX[model] wird als Obergrenze genutzt wenn bekannt.
+        """
+        model = data.get("model", "")
+        max_watt = WATT_MAX.get(model, 500.0)
+
+        def _opt_watt(level: int) -> vol.Optional:
+            stored = current.get(f"watt_level_{level}", data.get(f"watt_level_{level}"))
+            return vol.Optional(
+                f"watt_level_{level}",
+                default=stored,
+            )
+
+        watt_validator = vol.Any(
+            None,
+            vol.All(vol.Coerce(float), vol.Range(min=1, max=max_watt)),
+        )
+
+        return vol.Schema({
+            vol.Required(
+                CONF_SCAN_INTERVAL,
+                default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+            ),
+            _opt_watt(1): watt_validator,
+            _opt_watt(2): watt_validator,
+            _opt_watt(3): watt_validator,
+            _opt_watt(4): watt_validator,
+        })
+
+
+async def _probe_modbus(
+    host: str, port: int = DEFAULT_MODBUS_PORT
+) -> dict | None:
+    """Modbus-TCP Probe: verbindet, liest Gerätedaten, gibt dict oder None zurück.
+
+    Returns dict mit 'model', 'mac_id', 'firmware', 'switch_position'
+    oder None wenn Verbindung fehlschlägt / Gerät kein bekannter flex-Typ ist.
+    """
+    import logging as _log
+    _log.getLogger("pymodbus").setLevel(_log.CRITICAL)
+
+    try:
+        from pymodbus.client import AsyncModbusTcpClient
+        from pymodbus.client.mixin import ModbusClientMixin
+
+        client = AsyncModbusTcpClient(host=host, port=port, timeout=3, retries=0)
+        connected = await client.connect()
+        if not connected:
+            return None
+
+        def _u32(regs: list) -> int:
+            return ModbusClientMixin.convert_from_registers(
+                regs[:2], ModbusClientMixin.DATATYPE.UINT32, "little"
+            )
+
+        try:
+            # System-ID → Unit-Typ (Byte 0 des UINT32)
+            r = await client.read_holding_registers(address=2, count=2, device_id=1)
+            if r.isError():
+                return None
+            unit_type = _u32(r.registers) & 0xFF
+            model = UNIT_TYPE_TO_MODEL.get(unit_type)
+            if model is None:
+                _LOGGER.debug("Modbus-Probe: unbekannter Unit-Typ %d auf %s", unit_type, host)
+                return None
+
+            # Firmware-Version
+            fw_str = "?"
+            r = await client.read_holding_registers(address=24, count=2, device_id=1)
+            if not r.isError():
+                fw_raw = _u32(r.registers)
+                fw_str = f"{(fw_raw >> 8) & 0xFF}.{fw_raw & 0xFF}"
+
+            # MAC-Adresse → Unique-ID
+            mac_id = f"{host.replace('.', '')}_{unit_type}"  # Fallback
+            r = await client.read_holding_registers(address=40, count=4, device_id=1)
+            if not r.isError():
+                mac_high = _u32(list(r.registers)[0:2])
+                mac_low  = _u32(list(r.registers)[2:4])
+                mac_id = f"{mac_high:08X}{mac_low:08X}"
+
+            # A/B-Schalterstellung
+            switch_pos = "?"
+            r = await client.read_holding_registers(address=84, count=4, device_id=1)
+            if not r.isError():
+                hal_left = _u32(list(r.registers)[0:2])
+                switch_pos = "B" if hal_left else "A"
+
+            return {
+                "unit_type": unit_type,
+                "model": model,
+                "mac_id": mac_id,
+                "firmware": fw_str,
+                "switch_position": switch_pos,
+            }
+        finally:
+            client.close()
+
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Modbus-Probe auf %s:%d fehlgeschlagen: %s", host, port, err)
+        return None
 
 
 async def _fetch_device_info(host: str) -> dict | str:

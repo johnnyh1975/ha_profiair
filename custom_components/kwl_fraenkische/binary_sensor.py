@@ -21,6 +21,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
+from .const import CONF_PROTOCOL, DOMAIN, PROTOCOL_HTTP, PROTOCOL_MODBUS
 
 PARALLEL_UPDATES = 0
 
@@ -31,6 +32,7 @@ class KWLBinarySensorDescription(BinarySensorEntityDescription):
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
     entity_category: EntityCategory | None = field(default=None)
+    supported_protocols: frozenset[str] | None = field(default=None)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,6 +40,7 @@ class KWLAnalyticsBinarySensorDescription(BinarySensorEntityDescription):
     """Description for binary sensors backed by KWLAnalytics."""
     value_fn: Callable[[KWLCoordinator], bool | None] = lambda c: None
     entity_category: EntityCategory | None = field(default=EntityCategory.DIAGNOSTIC)
+    supported_protocols: frozenset[str] | None = field(default=frozenset({PROTOCOL_HTTP}))
 
 
 BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
@@ -54,6 +57,7 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
         name="Safety Manager",
         device_class=BinarySensorDeviceClass.SAFETY,
         value_fn=lambda d: d.safety_active,
+          supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLBinarySensorDescription(
         key="passive_mode",
@@ -141,6 +145,16 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
         required_tag="aul0",
         value_fn=lambda d: d.bypass_recommended,
     ),
+
+    # ── Flex-only ─────────────────────────────────────────────────────────────
+    KWLBinarySensorDescription(
+        key="alarm_active",
+        name="Alarm aktiv",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:alert-circle",
+        value_fn=lambda d: bool(d.alarm_code),
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
 )
 
 # ── Analytics-backed binary sensors ───────────────────────────────────────────
@@ -205,19 +219,34 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: KWLCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
+    protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
-    caps = coordinator.capabilities
-    supported = [d for d in BINARY_SENSORS if caps is None or _is_supported(d, caps)]
-    entities: list = [
-        KWLBinarySensor(coordinator, entry, description, mac)
-        for description in supported
-    ]
-    # Analytics sensors are always added (not capability-gated)
-    entities += [
-        KWLAnalyticsBinarySensor(coordinator, entry, description, mac)
-        for description in ANALYTICS_BINARY_SENSORS
-    ]
+    entities: list = []
+
+    if protocol == PROTOCOL_MODBUS:
+        supported = [
+            d for d in BINARY_SENSORS
+            if (d.supported_protocols is None or PROTOCOL_MODBUS in d.supported_protocols)
+            and not d.required_endpoint
+            # required_tag NICHT ausschließen: frost_risk, bypass_leaking, motor_asymmetry,
+            # bypass_recommended, preheater_active haben required_tag aber shared value_fn.
+            # safety_active, passive_mode, digital_input_* sind explizit {PROTOCOL_HTTP} markiert.
+        ]
+        entities = [KWLBinarySensor(coordinator, entry, d, mac) for d in supported]
+    else:
+        caps = coordinator.capabilities
+        supported = [
+            d for d in BINARY_SENSORS
+            if (d.supported_protocols is None or PROTOCOL_HTTP in d.supported_protocols)
+            and (caps is None or _is_supported(d, caps))
+        ]
+        entities = [KWLBinarySensor(coordinator, entry, d, mac) for d in supported]
+        entities += [
+            KWLAnalyticsBinarySensor(coordinator, entry, d, mac)
+            for d in ANALYTICS_BINARY_SENSORS
+        ]
+
     async_add_entities(entities)
 
 
@@ -241,6 +270,8 @@ class KWLBinarySensor(CoordinatorEntity[KWLCoordinator], BinarySensorEntity):
         # Activate translation lookup from strings.json / translations/*.json
         if not description.translation_key:
             self._attr_translation_key = description.key
+        # Konsistente entity_id unabhaengig von Gerätename und Area
+        self.entity_id = f"binary_sensor.{coordinator.model_slug}_{description.key}"
 
     @property
     def available(self) -> bool:
@@ -275,6 +306,7 @@ class KWLAnalyticsBinarySensor(CoordinatorEntity[KWLCoordinator], BinarySensorEn
             self._attr_entity_category = description.entity_category
         if not description.translation_key:
             self._attr_translation_key = description.key
+        self.entity_id = f"binary_sensor.{coordinator.model_slug}_{description.key}"
 
     @property
     def available(self) -> bool:

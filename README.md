@@ -2,11 +2,11 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
-[![Tests](https://img.shields.io/badge/Tests-219%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
+[![Tests](https://img.shields.io/badge/Tests-417%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.4.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](CHANGELOG.md)
 
-> **What this integration makes possible:** a profi-air 250 or 400 touch that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
+> **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
 ---
 
@@ -22,6 +22,7 @@
 - [First winter — full diagnostics activate](#first-winter--full-diagnostics-activate)
 - [Summer night cooling automation](#summer-night-cooling-automation)
 - [All entities](#all-entities)
+- [Flex / flat entities (v2.0.0)](#flex--flat-entities-v200)
 - [Options and calibration](#options-and-calibration)
 - [After filter replacement](#after-filter-replacement)
 - [Firmware bypass settings](#firmware-bypass-settings)
@@ -34,19 +35,39 @@
 
 ## What you get
 
-The profi-air 250 and 400 touch are excellent ventilation units with a built-in weekly schedule and a local HTTP interface. What they lack is any awareness of the outside world — weather, indoor temperature trends, season changes, or their own performance over time.
+Fränkische profi-air units are excellent ventilators with built-in schedules and a local interface. What they lack is any awareness of the outside world — weather, indoor temperature trends, season changes, or their own performance over time.
 
-This integration adds that intelligence layer entirely within Home Assistant:
+This integration adds that layer entirely within Home Assistant, with no cloud and no firmware changes.
+
+### All devices (touch + flex/flat)
 
 | | Without this integration | With this integration |
 |---|---|---|
-| **Control** | Device touchscreen + weekly schedule | HA dashboard + automations |
+| **Dashboard** | Device touchscreen only | Full HA control and monitoring |
+| **Heat recovery** | No feedback | Real-time efficiency η, frost-risk detection |
+| **Bypass diagnostics** | No feedback | Bypass leaking detection, summer bypass recommendation |
+| **Motor diagnostics** | No feedback | RPM asymmetry detection with direction check |
+| **Filter** | Display alarm only | Remaining days sensor, configurable interval, HA notification before alarm |
+| **Temperatures** | Device screen only | All four air temperatures as HA sensors |
+
+### touch (profi-air 250/400 touch) — additional
+
+| | Without this integration | With this integration |
+|---|---|---|
 | **Summer cooling** | Manual bypass toggle | Automatic night pre-cooling based on weather + indoor temperature |
-| **Maintenance alerts** | "F1" on display when filter is overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
 | **Energy tracking** | None | Cumulative kWh per level in HA Energy Dashboard |
-| **Efficiency** | No feedback | Real-time heat recovery efficiency with self-calibrating seasonal baseline |
 | **Power monitoring** | None | Continuous watt estimate from motor RPM — EC motor model P = P_base + k × (RPM/RPM_ref)³ |
-| **Self-learning** | None | Analytics engine builds device-specific baselines over first weeks and months |
+| **Self-learning** | None | Analytics engine: RPM baselines, efficiency baselines, bypass episode tracking, night cooling history |
+| **Maintenance alerts** | "F1" on display when filter is overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
+
+### flex/flat (profi-air 250/360 flex, 180 flat) — additional
+
+| | Without this integration | With this integration |
+|---|---|---|
+| **Operating mode** | Device menu only | Mode selection from HA (Manual, Demand, Weekly, Away, Summer, Night, Fireplace) |
+| **Alarm monitoring** | Device display only | E1–E15 alarm text as HA sensor, binary `alarm_active`, clear button |
+| **Optional sensors** | Device screen only | VOC, relative humidity, CO₂, room temperature (when hardware present) |
+| **Fan level control** | Device touchscreen | HA control — v2.0.1, pending FC16 confirmation |
 
 Everything runs locally. No cloud, no subscription, no external services.
 
@@ -54,14 +75,26 @@ Everything runs locally. No cloud, no subscription, no external services.
 
 ## Supported devices
 
-| Device | Status |
-|---|---|
-| **profi-air 400 touch** | ✅ Full support |
-| **profi-air 250 touch** | ✅ Full support |
-| profi-air with external sensors (Artikelnr. 78300831/78300832) | ✅ External sensor entities included |
-| Older profi-air models (classic firmware) | ✅ Core entities via capability discovery |
+### HTTP XML (profi-air touch)
 
-The integration automatically detects your firmware capabilities on first start. Entities that your device does not support are simply not created.
+| Device | Protocol | Status |
+|---|---|---|
+| **profi-air 400 touch** | HTTP XML | ✅ Full support |
+| **profi-air 250 touch** | HTTP XML | ✅ Full support |
+| profi-air with external sensors (Artikelnr. 78300831/78300832) | HTTP XML | ✅ External sensor entities included |
+| Older profi-air models (classic firmware) | HTTP XML | ✅ Core entities via capability discovery |
+
+### Modbus TCP (profi-air flex / flat) — new in v2.0.0
+
+| Device | Protocol | Status |
+|---|---|---|
+| **profi-air 250 flex** | Modbus TCP | ✅ Full support |
+| **profi-air 360 flex** | Modbus TCP | ✅ Full support |
+| **profi-air 180 flat** | Modbus TCP | ⚠️ Experimental — basic entities only, not fully validated |
+
+The integration detects the protocol automatically: it tries HTTP first (touch), then falls back to Modbus (flex/flat). No manual protocol selection needed.
+
+For touch devices, entity capabilities are discovered from the XML response — entities your firmware does not provide are not created. For flex/flat, optional sensors (VOC, humidity, CO₂, room temperature) are enabled only when hardware is detected at first poll.
 
 ---
 
@@ -70,7 +103,8 @@ The integration automatically detects your firmware capabilities on first start.
 - Home Assistant 2026.3 or newer
 - [HACS](https://hacs.xyz) installed
 - profi-air device reachable on your local network at a static IP
-- Installer credentials (factory default: `install` / `konfig12` — change this if you have not)
+- **Touch devices:** Installer credentials optional (factory default: `install` / `konfig12`). Without credentials: read-only mode, all sensors active, no fan level or write control.
+- **Flex/flat devices:** No credentials required. Modbus TCP port 502 must be reachable.
 
 ---
 
@@ -79,7 +113,7 @@ The integration automatically detects your firmware capabilities on first start.
 **Via HACS (recommended)**
 
 1. HACS → Integrations → menu (⋮) → Custom repositories
-2. Add `https://github.com/johnnyh1975/ha-kwl-fraenkische` — category Integration
+2. Add `https://github.com/johnnyh1975/ha-profiair` — category Integration
 3. Search for **KWL Fränkische Rohrwerke**, install, restart HA
 
 **Manual**
@@ -93,11 +127,17 @@ Copy `custom_components/kwl_fraenkische` into your `config/custom_components/` d
 Go to **Settings → Devices & Services → Add Integration**, search for **KWL Fränkische Rohrwerke**.
 
 **Step 1 — IP address**
-Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration checks connectivity immediately.
+Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration probes automatically: HTTP first (touch), then Modbus (flex/flat).
 
-**Step 2 — Installer credentials**
-Enter the username and password for the installer area. Factory defaults: `install` / `konfig12`.
-Change this password on the device if you have not already done so.
+---
+
+### Touch path (profi-air 250/400 touch)
+
+**Step 2 — Installer access**
+A menu appears with two options:
+
+- **Enter credentials** — full write access (fan levels, bypass control, party mode). Factory defaults: `install` / `konfig12`. Change this password on the device if you have not already done so.
+- **Skip (read-only)** — all sensor data is available, but level changes and write controls are disabled. Useful when installer credentials are not available.
 
 **Step 3 — Power reference values**
 These determine the accuracy of the Energy Dashboard and anchor the real-time power calculation. The 400 touch defaults are **measured values** (clamp meter, four levels). The 250 touch defaults are estimates — measure your own installation for accuracy.
@@ -113,6 +153,17 @@ All four values are individually configurable. Stufe 4 is the primary anchor —
 
 **After setup — set your device model**
 Settings → Devices & Services → KWL → Configure → select your model. This activates model-appropriate defaults and enables model-specific airflow estimation.
+
+---
+
+### Flex/flat path (profi-air 250/360 flex, 180 flat)
+
+**Step 2 — Confirm device**
+The integration reads the unit type, firmware version, and fan switch position from the device. A confirmation screen shows the detected model. Press **Submit** to create the entry.
+
+No credentials required. No power values are entered during setup — measured values are not yet available for flex models. They can be added later in **Options** when you have clamp-metered your installation.
+
+> **Fan level control** is not yet available for flex/flat devices in v2.0.0. The FC16 write block format is pending confirmation. All read sensors, mode selection, filter management, and alarm control are fully functional. Fan level control comes in v2.0.1.
 
 ---
 
@@ -319,17 +370,65 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 
 ---
 
+## Flex / flat entities (v2.0.0)
+
+These entities are created for profi-air flex and flat devices only. All entities from the **Binary sensors — always active** section above (frost_risk, bypass_leaking, motor_asymmetry, bypass_recommended) are also available on flex/flat devices.
+
+### Sensors
+
+| Key | Description | Optional |
+|---|---|---|
+| `current_mode_text` | Active operating mode | — |
+| `alarm_text` | Active alarm text (E1–E15) or empty | — |
+| `temp_abluft / zuluft / aussenluft / fortluft` | Air temperatures T1–T4 | — |
+| `motor_abluft_rpm_flex` | Extract fan RPM | — |
+| `motor_zuluft_rpm_flex` | Supply fan RPM | — |
+| `bypass_status` | Bypass state (Auto: Zu / Offen / Bewegt) | — |
+| `filter_residual_days` | Days remaining until filter service | — |
+| `filter_total_days` | Configured filter service interval | — |
+| `heat_recovery_efficiency` | Supply-side η, gated to ΔT ≥ 3 K | — |
+| `preheater_duty_pct` | Pre-heater duty cycle % | — |
+| `hours_total` | Total operating hours | — |
+| `bypass_tmin / bypass_tmax` | Bypass temperature thresholds from device | — |
+| `temp_room` | Room temperature via wireless remote (T5) | ✅ if remote installed |
+| `voc_ppm` | VOC concentration | ✅ if sensor installed |
+| `rh_percent` | Relative humidity | ✅ if sensor installed |
+| `co2_ppm` | CO₂ concentration | ✅ if sensor installed |
+
+### Binary sensors (flex-only)
+
+| Key | Fires when |
+|---|---|
+| `alarm_active` | Any alarm code E1–E15 is active |
+
+### Controls
+
+| Entity | Description |
+|---|---|
+| `select.operating_mode` | Mode: Manual / Demand / Weekly / Away / Summer / Night / Fireplace |
+| `number.filter_total_days_flex` | Filter service interval (30–360 days) |
+| `button.filter_reset_flex` | Confirm filter replacement on device |
+| `button.alarm_clear` | Clear active alarm |
+
+### Polling
+
+Operative data (temperatures, RPM, level, mode, alarm) is read every poll cycle (default 30 s). Quasi-static data (filter days, bypass thresholds, operating hours) is read every 10 cycles (~5 min). All write operations trigger an immediate refresh.
+
+---
+
 ## Options and calibration
 
 Settings → Devices & Services → KWL → Configure
 
-### Device model
-Select **profi-air 250 touch** or **profi-air 400 touch**. Sets model-appropriate default watt values and activates model-specific airflow estimation.
+### Device model (touch only)
+Select **profi-air 250 touch** or **profi-air 400 touch**. Sets model-appropriate default watt values and activates model-specific airflow estimation. Not shown for flex/flat (model is detected automatically).
 
 ### Power reference values
-Four individually configurable watt values — one per fan level. The 400 touch defaults are actual clamp meter measurements (11 / 17.5 / 43.5 / 80 W, measured since v1.1). The 250 touch defaults are estimates — measure your own installation for accurate energy accounting.
+Four individually configurable watt values — one per fan level.
 
-All four values feed into cumulative energy calculation (`energy_level_X` sensors). They also drive the EC motor model: the integration derives P_base and k_aero automatically via least-squares from all four measurements, so accurate values at every level improve both the energy accounting and the real-time `power_current` accuracy.
+**Touch:** The 400 touch defaults are actual clamp meter measurements (11 / 17.5 / 43.5 / 80 W, measured since v1.1). The 250 touch defaults are estimates. All four values feed cumulative energy calculation and drive the EC motor model.
+
+**Flex/flat:** Fields are optional (blank = energy calculation disabled for that level). No measured values exist yet — measure your own installation with a clamp meter and enter them here for accurate energy accounting. The EC motor model will be applied once values are provided.
 
 ### Poll interval
 Default 30 seconds. Range 30–300 s. Shorter intervals give more accurate analytics and more responsive automations.
@@ -373,8 +472,17 @@ The kWh values are calculated from operating hours × configured watt values. Me
 
 ## Troubleshooting
 
-**Integration shows unavailable**
+**Integration shows unavailable (touch)**
 Verify `http://YOUR_KWL_IP/status.xml` returns XML data. Check network routing if the KWL is on a different subnet.
+
+**Integration shows unavailable (flex/flat)**
+Verify Modbus TCP port 502 is reachable: `nc -zv YOUR_KWL_IP 502` or a Modbus scanner. Some installations require the UVC controller to have Modbus access explicitly enabled in its configuration.
+
+**Unknown device type error during setup (flex)**
+The integration read a Modbus unit type code it does not recognise. Currently supported: code 11 (250 flex), code 15 (360 flex), code 4 (180 flat). Note the code shown and open an issue — new unit types can be added quickly.
+
+**Fan level control unavailable on flex**
+This is a known v2.0.0 limitation. The FC16 write block format for level changes is pending confirmation from a hardware test. All read entities and mode selection work normally. Fan level control comes in v2.0.1.
 
 **Installer credentials rejected**
 Try factory defaults `install` / `konfig12`. If they fail, retrieve the current password from `.storage/core.config_entries` in your HA config directory.
@@ -408,6 +516,13 @@ Party mode activates Stufe 4 for a device-side timer. The fan entity correctly r
 
 ## Changelog
 
+### v2.0.0
+
+**Modbus TCP support — profi-air flex and flat**
+Protocol auto-detection (HTTP then Modbus). New `flex_coordinator.py` with `KWLFlexCoordinator`: two-tier polling (fast operative registers every poll, quasi-static every 10th poll), post-write immediate refresh, full analytics integration. Supports profi-air 250 flex (unit type 11), 360 flex (type 15), 180 flat (type 4, experimental). Config flow redesigned: installer credentials now optional (read-only mode if skipped), flex confirmation step with model/firmware/switch display.
+
+Fan level write for flex pending (FC16 block format unconfirmed) — all other flex controls fully functional. HACS requirement: `pymodbus>=3.10.0`.
+
 ### v1.4.0
 
 **Self-calibrating analytics engine**
@@ -416,14 +531,8 @@ New `analytics.py` — pure Python, zero HA imports. Welford online statistics p
 **New entities**
 bypass_hunting, rpm_anomaly, ratio_anomaly, eta_below_baseline, fan_law_anomaly binary sensors. bypass_open_pct, bypass_avg_open_min, bypass_transitions_1h, night_cooling_last/7d, rpm_ratio, fan_law_max_deviation, spi_stufe4, eps_exhaust, energy_balance_ratio, analytics_maturity, analytics_season sensors. Analytics reset button.
 
-**Diagnostic improvements**
-motor_asymmetry threshold 25% → 22% with direction check. bypass_leaking adds summer-mode path. η gate raised 1.5K → 3.0K with seasonal context in docstring. bypass_recommended threshold aligned 2K → 3K. Unknown tags logged once only (was: every poll).
-
 **Power and energy — EC motor model**
-`power_current` uses the two-parameter EC motor model P = P_base + k × (RPM/RPM_ref)³, where P_base and k_aero are derived automatically per least-squares from the configured watt values and measured RPM ratios. For the 400 touch (measured 11/17.5/43.5/80 W): P_base = 8.93 W, k = 71.71 W, R² = 0.9989. A pure P ∝ n³ law would underestimate Stufe 1 by 72%; the EC overhead model eliminates this error. `heat_recovery_watts` uses RPM-based airflow (Q = Q_ref × RPM/RPM_ref). `fan_law_anomaly` threshold is 5% of P_Stufe4 against two-parameter residuals — was 15% against pure cubic (which would have fired falsely on every healthy motor). 400 touch watt defaults restored to measured values (11/17.5/43.5/80 W); 250 touch defaults are estimates (4/8/23/45 W).
-
-**Configuration**
-Device model selector (250 / 400 touch) in options flow. `RPM_DEFAULTS` added to const.py for use before analytics baseline is established. Translation keys activated on all entity classes for proper EN/DE support.
+`power_current` uses the two-parameter EC motor model P = P_base + k × (RPM/RPM_ref)³, where P_base and k_aero are derived automatically per least-squares from the configured watt values and measured RPM ratios. For the 400 touch (measured 11/17.5/43.5/80 W): P_base = 8.93 W, k = 71.71 W, R² = 0.9989.
 
 ### v1.3.1 and earlier
 See [CHANGELOG.md](CHANGELOG.md)

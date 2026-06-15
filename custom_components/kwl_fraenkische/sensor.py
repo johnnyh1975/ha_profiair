@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA, LEVEL_TO_WATT
+from .const import CONF_PROTOCOL, DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA, LEVEL_TO_WATT, PROTOCOL_HTTP, PROTOCOL_MODBUS
 from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 0
@@ -41,6 +41,8 @@ class KWLSensorDescription(SensorEntityDescription):
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
     entity_category: EntityCategory | None = field(default=None)
+    # None = beide Protokolle, {PROTOCOL_HTTP} = nur touch, {PROTOCOL_MODBUS} = nur flex
+    supported_protocols: frozenset[str] | None = field(default=None)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -48,6 +50,8 @@ class KWLAnalyticsSensorDescription(SensorEntityDescription):
     """Description for sensors backed by KWLAnalytics."""
     value_fn: Callable[[KWLCoordinator], float | int | str | None] = lambda c: None
     entity_category: EntityCategory | None = field(default=EntityCategory.DIAGNOSTIC)
+    # Analytics-Sensoren sind aktuell touch-only (Baselines noch nicht für flex kalibriert)
+    supported_protocols: frozenset[str] | None = field(default=frozenset({PROTOCOL_HTTP}))
 
 
 def _energy_kwh(hours: int | None, watt: float) -> float | None:
@@ -116,6 +120,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         force_update=True,
         value_fn=lambda d: d.motor_zuluft_rpm,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="motor_abluft_rpm",
@@ -126,6 +131,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         force_update=True,
         value_fn=lambda d: d.motor_abluft_rpm,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="motor_zuluft_volt",
@@ -137,6 +143,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         suggested_display_precision=1,
         value_fn=lambda d: d.motor_zuluft_volt,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="motor_abluft_volt",
@@ -148,6 +155,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         suggested_display_precision=1,
         value_fn=lambda d: d.motor_abluft_volt,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
 
     # ------------------------------------------------------------------
@@ -161,6 +169,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="W",
         value_fn=lambda d: LEVEL_TO_WATT.get(d.current_level),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
 
     # ------------------------------------------------------------------
@@ -174,6 +183,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
         value_fn=lambda d: _energy_kwh(d.hours_level_1, LEVEL_TO_WATT[1]),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="energy_level_2",
@@ -183,6 +193,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
         value_fn=lambda d: _energy_kwh(d.hours_level_2, LEVEL_TO_WATT[2]),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="energy_level_3",
@@ -192,6 +203,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
         value_fn=lambda d: _energy_kwh(d.hours_level_3, LEVEL_TO_WATT[3]),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="energy_level_4",
@@ -201,6 +213,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
         value_fn=lambda d: _energy_kwh(d.hours_level_4, LEVEL_TO_WATT[4]),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
 
     # ------------------------------------------------------------------
@@ -216,6 +229,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_level_1,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="hours_level_2",
@@ -227,6 +241,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_level_2,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="hours_level_3",
@@ -238,6 +253,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_level_3,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="hours_level_4",
@@ -249,6 +265,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_level_4,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     # ------------------------------------------------------------------
     # Filter Restlaufzeit -- aus der anderen Integration uebernommen
@@ -286,6 +303,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_frost,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="hours_preheater",
@@ -297,6 +315,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.HOURS,
         entity_registry_enabled_default=False,
         value_fn=lambda d: d.hours_preheater,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
 
     # ------------------------------------------------------------------
@@ -331,6 +350,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         key="current_level_text",
         name="Aktuelle Stufe",
         value_fn=lambda d: d.current_level_text,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="party_timer",
@@ -338,6 +358,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=lambda d: d.party_timer_minutes,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
     KWLSensorDescription(
         key="bypass_status",
@@ -349,6 +370,118 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         name="Systemmeldung",
         value_fn=lambda d: d.system_message,
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
+    ),
+
+    # ── Flex-only Sensoren (profi-air 250/360 flex, 180 flat) ─────────────
+    KWLSensorDescription(
+        key="current_mode_text",
+        name="Betriebsmodus",
+        icon="mdi:cog",
+        value_fn=lambda d: d.current_mode_text,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="alarm_text",
+        name="Alarm",
+        icon="mdi:alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.alarm_text,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="preheater_duty_pct",
+        name="Vorheizregister Auslastung",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.preheater_duty_pct,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="hours_total",
+        name="Gesamtbetriebsstunden",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.hours_total,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="bypass_tmin",
+        name="Bypass Mindesttemperatur",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement="°C",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.bypass_tmin,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="bypass_tmax",
+        name="Bypass Maximaltemperatur",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement="°C",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.bypass_tmax,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="temp_room",
+        name="Raumtemperatur",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="°C",
+        value_fn=lambda d: d.temp_room,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="voc_ppm",
+        name="VOC",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="ppm",
+        icon="mdi:molecule",
+        value_fn=lambda d: d.voc_ppm,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="rh_percent",
+        name="Relative Feuchte",
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        value_fn=lambda d: d.rh_percent,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="co2_ppm",
+        name="CO₂",
+        device_class=SensorDeviceClass.CO2,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="ppm",
+        value_fn=lambda d: d.co2_ppm,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="motor_abluft_rpm_flex",
+        name="Abluft-Ventilator RPM",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.motor_abluft_rpm,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="motor_zuluft_rpm_flex",
+        name="Zuluft-Ventilator RPM",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.motor_zuluft_rpm,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
 )
 
@@ -529,6 +662,7 @@ class KWLSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
         # Activate translation lookup from strings.json / translations/*.json
         if not description.translation_key:
             self._attr_translation_key = description.key
+        self.entity_id = f"sensor.{coordinator.model_slug}_{description.key}"
 
     @property
     def available(self) -> bool:
@@ -601,6 +735,7 @@ class KWLAnalyticsSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
             self._attr_entity_category = description.entity_category
         if not description.translation_key:
             self._attr_translation_key = description.key
+        self.entity_id = f"sensor.{coordinator.model_slug}_{description.key}"
 
     @property
     def available(self) -> bool:
@@ -620,17 +755,36 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: KWLCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
+    protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
-    caps = coordinator.capabilities
-    supported = [d for d in SENSORS if caps is None or _is_supported(d, caps)]
     entities: list = []
-    for desc in supported:
-        cls = KWLWattSensor if desc.key in _WATT_SENSOR_KEYS else KWLSensor
-        entities.append(cls(coordinator, entry, desc, mac))
-    # Analytics sensors are always added (not capability-gated)
-    entities += [
-        KWLAnalyticsSensor(coordinator, entry, desc, mac)
-        for desc in ANALYTICS_SENSORS
-    ]
+
+    if protocol == PROTOCOL_MODBUS:
+        # Flex-Pfad: required_tag NICHT ausschließen — Tags sind XML-spezifisch (touch-Capability-Gate),
+        # aber value_fn kann trotzdem shared Properties (temps, filter_days, bypass) aufrufen.
+        # Touch-only Properties sind explizit mit supported_protocols={PROTOCOL_HTTP} markiert.
+        supported = [
+            d for d in SENSORS
+            if (d.supported_protocols is None or PROTOCOL_MODBUS in d.supported_protocols)
+            and not d.required_endpoint
+        ]
+        entities = [KWLSensor(coordinator, entry, desc, mac) for desc in supported]
+        # Keine Analytics-Sensoren für flex (Baselines noch nicht kalibriert)
+    else:
+        # Touch-Pfad: bisheriges Verhalten + Protocol-Filter
+        caps = coordinator.capabilities
+        supported = [
+            d for d in SENSORS
+            if (d.supported_protocols is None or PROTOCOL_HTTP in d.supported_protocols)
+            and (caps is None or _is_supported(d, caps))
+        ]
+        for desc in supported:
+            cls = KWLWattSensor if desc.key in _WATT_SENSOR_KEYS else KWLSensor
+            entities.append(cls(coordinator, entry, desc, mac))
+        entities += [
+            KWLAnalyticsSensor(coordinator, entry, desc, mac)
+            for desc in ANALYTICS_SENSORS
+        ]
+
     async_add_entities(entities)

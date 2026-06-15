@@ -23,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_PROTOCOL, DOMAIN, PROTOCOL_HTTP, PROTOCOL_MODBUS
 from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 1
@@ -46,6 +46,7 @@ class KWLNumberDescription(NumberEntityDescription):
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
     entity_category: EntityCategory | None = field(default=None)
+    supported_protocols: frozenset[str] | None = field(default=None)
 
 
 def _two_digits(v: float) -> str:
@@ -303,6 +304,21 @@ NUMBERS: tuple[KWLNumberDescription, ...] = (
         value_fn=lambda d: d.airflow_s4_exhaust,
         entity_registry_enabled_default=False,
     ),
+
+    # ── Flex-only Numbers (profi-air 250/360 flex, 180 flat) ──────────────────
+    KWLNumberDescription(
+        key="filter_total_days_flex",
+        name="Filterintervall",
+        device_class=NumberDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        native_min_value=30,
+        native_max_value=360,
+        native_step=1,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        value_fn=lambda d: float(d.filter_total_days) if d.filter_total_days is not None else None,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
 )
 
 
@@ -311,14 +327,64 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: KWLCoordinator = entry.runtime_data
-    caps = coordinator.capabilities
+    coordinator = entry.runtime_data
+    protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
-    supported = [d for d in NUMBERS if caps is None or _is_supported(d, caps)]
-    async_add_entities(
-        KWLNumber(coordinator, entry, description, mac)
-        for description in supported
-    )
+
+    if protocol == PROTOCOL_MODBUS:
+        # Alle existing Numbers haben post_field → HTTP POST → auto-ausgeschlossen
+        supported = [
+            d for d in NUMBERS
+            if (d.supported_protocols is None or PROTOCOL_MODBUS in d.supported_protocols)
+            and not d.post_field
+            and not d.required_tag
+            and not d.required_endpoint
+        ]
+        async_add_entities(
+            KWLFlexNumber(coordinator, entry, d, mac) for d in supported
+        )
+    else:
+        caps = coordinator.capabilities
+        supported = [
+            d for d in NUMBERS
+            if (d.supported_protocols is None or PROTOCOL_HTTP in d.supported_protocols)
+            and (caps is None or _is_supported(d, caps))
+        ]
+        async_add_entities(
+            KWLNumber(coordinator, entry, d, mac) for d in supported
+        )
+
+
+class KWLFlexNumber(CoordinatorEntity, NumberEntity):  # type: ignore[type-arg]
+    """Numerischer Parameter für Flex-Geräte (Modbus TCP)."""
+
+    _attr_has_entity_name = True
+    entity_description: KWLNumberDescription
+
+    def __init__(self, coordinator, entry: ConfigEntry, description: KWLNumberDescription, mac: str) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{mac}_{description.key}"
+        self._attr_device_info = coordinator.device_info
+        self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        if description.entity_category is not None:
+            self._attr_entity_category = description.entity_category
+        self.entity_id = f"number.{coordinator.model_slug}_{description.key}"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success and self.coordinator.data is not None
+
+    @property
+    def native_value(self) -> float | None:
+        if not self.available:
+            return None
+        return self.entity_description.value_fn(self.coordinator.data)
+
+    async def async_set_native_value(self, value: float) -> None:
+        key = self.entity_description.key
+        if key == "filter_total_days_flex":
+            await self.coordinator.async_set_filter_total(int(value))
 
 
 class KWLNumber(CoordinatorEntity[KWLCoordinator], NumberEntity):
@@ -339,6 +405,7 @@ class KWLNumber(CoordinatorEntity[KWLCoordinator], NumberEntity):
         self._attr_unique_id = f"{mac}_{description.key}"
         self._attr_device_info = coordinator.device_info
         self._attr_entity_registry_enabled_default = description.entity_registry_enabled_default
+        self.entity_id = f"number.{coordinator.model_slug}_{description.key}"
         self._optimistic_value: float | None = None
 
     def _handle_coordinator_update(self) -> None:

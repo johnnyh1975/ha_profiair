@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_PROTOCOL, DOMAIN, PROTOCOL_HTTP
 from .coordinator import KWLCoordinator
 
 PARALLEL_UPDATES = 1
@@ -43,6 +43,9 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    # Flex-Geräte: kein Fan bis FC16-Block-Format bestätigt (async_set_level → NotImplementedError)
+    if entry.data.get(CONF_PROTOCOL) != PROTOCOL_HTTP:
+        return
     coordinator: KWLCoordinator = entry.runtime_data
     async_add_entities([KWLFan(coordinator, entry)])
 
@@ -57,7 +60,8 @@ class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
     """
 
     _attr_has_entity_name = True
-    _attr_translation_key = "kwl_fan"
+    _attr_name = None           # Haupt-Entity: Anzeigename = Gerätename, kein Suffix
+    _attr_translation_key = "kwl_fan"  # Nur für preset_mode Übersetzungen
     _attr_supported_features = (
         FanEntityFeature.PRESET_MODE
         | FanEntityFeature.SET_SPEED
@@ -72,6 +76,7 @@ class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
         mac = entry.data.get("mac", entry.entry_id)
         self._attr_unique_id = f"{mac}_fan"
         self._attr_device_info = coordinator.device_info
+        self.entity_id = f"fan.{coordinator.model_slug}"
         self._optimistic_level: int | None = None
 
     def _handle_coordinator_update(self) -> None:

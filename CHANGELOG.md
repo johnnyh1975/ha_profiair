@@ -1,119 +1,117 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Alle relevanten Änderungen an dieser Integration werden hier dokumentiert.
+Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ---
 
-## [1.3.0] - 2026-05-31
+## [2.0.0] – 2026-06
 
-This release consolidates all work since v1.2.0 into a single coherent release.
-The version jump from 1.2 reflects genuine feature additions; intermediate patch
-versions (1.3–1.5) have been collapsed here as they were primarily bugfixes
-that should never have been separate minor versions.
+### Neu: profi-air flex und flat Unterstützung (Modbus TCP)
 
-### Added
+Diese Version fügt Unterstützung für drei neue Gerätefamilien hinzu, die über
+Modbus TCP kommunizieren anstatt HTTP/XML:
 
-**New entities**
-- `binary_sensor.kwl_frost_risiko` — frost risk for heat exchanger (Außenluft < -5°C and Zuluft < 5°C)
-- `binary_sensor.kwl_bypass_leckage` — bypass leakage detected from temperature delta (disabled by default)
-- `binary_sensor.kwl_motor_asymmetrie` — motor RPM asymmetry > 15%, sign of wear (disabled by default)
-- `binary_sensor.kwl_bypass_vorkuehlung_empfohlen` — bypass pre-cooling currently beneficial
-- `binary_sensor.kwl_digital_input_1/2/3` — physical digital inputs (disabled by default)
-- `sensor.kwl_waermerueckgewinnungsgrad` — heat recovery efficiency η in %, with force_update
-- `sensor.kwl_rueckgewonnene_waermeleistung` — recovered heat output in W
+| Gerät | Protokoll | Status |
+|---|---|---|
+| profi-air 250 touch | HTTP XML | ✅ Unverändert |
+| profi-air 400 touch | HTTP XML | ✅ Unverändert |
+| profi-air 250 flex | Modbus TCP | ✅ Vollständig |
+| profi-air 360 flex | Modbus TCP | ✅ Vollständig |
+| profi-air 180 flat | Modbus TCP | ⚠️ Experimentell |
 
-**Repair Issues**
-- `filter_needs_replacement` — already present, now also deleted when resolved
-- `annual_maintenance_due` — fires after 8760 operating hours, fixable, deleted after confirmation
-- `bypass_leaking` — fires after 3 consecutive positive polls (prevents false alarms)
-- `motor_asymmetry` — fires after 3 consecutive positive polls
+#### Neue Entities für flex/flat
 
-**Configuration**
-- Options Flow — poll interval (30–300 s) and watt values adjustable after setup without reinstalling
-- `async_migrate_entry` — automatically migrates v1 Config Entries to v2 (adds missing watt values)
-- `CONFIG_FLOW VERSION = 2`
+**Sensoren:** Betriebsmodus, Alarm, Raumtemperatur (T5), VOC, relative Feuchte,
+CO₂, Vorheizregister-Auslastung, Bypass-Schwellenwerte, Gesamtbetriebsstunden,
+Abluft-/Zuluft-RPM (flex-spezifisch)
 
-**Code quality**
-- `entity_category` CONFIG/DIAGNOSTIC on all relevant entities
-- Complete EN + DE translations — all entities, options, repair issues
-- Minimum XML tag validation — `UpdateFailed` on partial response
-- `KWLWattSensor` subclass — clean separation of watt_map-dependent sensors
-- 218 automated tests (up from 161 in v1.2.0)
+**Steuerung:** Betriebsmodus-Select (Manuell, Bedarfsgesteuert, Wochenprogramm,
+Urlaub, Sommer, Nacht, Kaminbetrieb), Filterintervall-Eingabe (30–360 Tage),
+Alarm quittieren, Filterfehler bestätigen
 
-### Fixed
+**Diagnose:** Bypass-Leckage, Motor-Asymmetrie, Frost-Risiko, Bypass-Empfehlung
+(alle shared mit touch)
 
-**Bugs that would have caused runtime errors**
-- Setup order in `__init__.py`: `runtime_data` now set before `async_setup()` — previously could cause `AttributeError` if time sync timer fired before runtime_data was available
-- `button.py`: `await _get_session()` → `_get_session()` — would have raised `TypeError` on every button press
-- `button.py`: `RuntimeError` → `HomeAssistantError`
-- `fan.py`: `data.control_mode` → `data.program_control` — would have raised `AttributeError` on every dashboard refresh
-- All 7 derived binary sensors were never added to the `BINARY_SENSORS` tuple — they simply did not exist in HA despite being in translations and coordinator
+**Lüftungsstufen-Steuerung** (Lüfter-Entity) für flex ist noch **nicht verfügbar**
+— das FC16-Schreibformat für Stufenänderungen wird noch bestätigt.
+Kommt als v2.0.1 sobald bestätigt.
 
-**Correctness**
-- `reconfigure_flow`: now uses `{**entry.data, ...}` — previously overwrote watt values on IP/auth change
-- `annual_maintenance_due` Repair Issue: now deleted when hours drop below threshold and after confirmation
-- `bypass_leaking`/`motor_asymmetry` Repair Issues: 3-poll threshold prevents false alarms on measurement spikes
-- `repairs.py`: `self.issue_data` → `self.data` (correct RepairsFlow attribute)
-- `entity_category` type: `str | None` → `EntityCategory | None` in all dataclasses
-- Exhaust airflow entities: correct `required_tag` per sensor (e.g. `st1a` not `st1z`)
-- Dead Translation keys `language`/`program_control` in select removed
-- Broken "adaptive polling" removed — `update_interval` was set and immediately reset with no effect
+#### Polling-Strategie (Modbus)
 
-**Code hygiene**
-- `async_close_session`: dead code removed
-- `DOMAIN`: unused import in `binary_sensor.py` removed
-- `safety_active`, `passive_mode`, `preheater_active`: `entity_category=DIAGNOSTIC` added
-- `_is_supported`: `getattr` replaced with direct Protocol access
-- `unknown_tags`: logged only once after Discovery, not on every poll
-- Heat recovery η guard reduced from 3.0 K to 1.5 K (summer measurements were returning None)
-- `SCAN_INTERVAL` dead constant removed from coordinator
-- Docstring-after-code in `_async_sync_time` fixed
-- Duplicate `control_mode`/`program_control` property removed
-- Dead comment blocks from removed features cleaned up
-- `"Außenluft"` umlaut corrected in number.py
-- `"Nennlueftung"`/`"Intensivlueftung"` corrected (was double-e)
-- `_LOGGER` added to `__init__.py`
+Zweiteiliges Polling: operative Register (Temperaturen, RPM, Stufe, Alarm,
+Modus) bei jedem Poll-Zyklus; quasi-statische Register (Filterlaufzeit,
+Bypass-Schwellenwerte, Betriebsstunden) alle 10 Zyklen (~5 min bei 30 s
+Standardintervall). Schreibbefehle lösen sofort einen Refresh aus.
+
+#### Setup
+
+Protokoll-Erkennung vollautomatisch: HTTP-Probe zuerst (touch), dann Modbus-
+Probe (flex). Kein manuelles Protokoll-Auswählen nötig.
+
+Installateur-Zugangsdaten für touch-Geräte sind jetzt optional — "Überspringen"
+ermöglicht Lese-only-Betrieb ohne Installer-Passwort.
 
 ---
 
-## [1.2.0] - 2026-05-22
+### Geändert
 
-### Added
-- Digital inputs DiIn1/2/3 as binary sensors (disabled by default)
-- All firmware v2 tags (prg1–prg10, soze, time, date, events, langtxt0–154 etc.)
-  added to ALL_KNOWN_TAGS — zero unknown tag warnings after firmware update
+- **Lüfter-Entity** (touch): Anzeigename ist jetzt der Gerätename ohne Suffix
+  "Lüftung" (`_attr_name = None`, HA-Hauptentity-Muster)
+- **Config Flow VERSION**: 3 → 4 (automatische Migration bestehender Einträge)
+- **Options Flow**: Protokoll-bewusst — flex zeigt optionale Watt-Felder ohne
+  Pflichtmodus, touch behält bisherigen Modell-Selektor
 
----
+### Migration (v1.4.x → v2.0.0)
 
-## [1.1.0] - 2026-05-21
+Bestehende touch-Einträge werden automatisch migriert:
+1. `CONF_PROTOCOL = "http"` wird in `entry.data` ergänzt
+2. Fan-Entity-ID `fan.{model}_fan` → `fan.{model}` (falls vorhanden)
 
-### Added
-- **Capability Discovery** — automatically detects what your firmware supports on first startup
-- No unavailable entities for features the firmware does not expose
-- Unknown XML tags logged with direct GitHub issue link
-- `required_tag` / `required_endpoint` per EntityDescription
-- Two firmware fixtures in tests (full / minimal)
-- Profi-Air 250 Touch / 400 Touch explicitly supported and documented
+Kein manueller Eingriff nötig. Die Migration läuft beim ersten Start nach dem Update.
 
 ---
 
-## [1.0.0] - 2026-05-20
+## [1.4.0] – 2025
 
-### Added
-- Initial release
-- Fan entity with levels 1–4, percentage slider and preset modes
-- Bypass control (Manual open / Manual closed / Automatic)
-- All four temperatures: exhaust, supply, outdoor, extract air
-- Motor RPM and voltage sensors
-- Current power (W) and cumulative energy per level (kWh) — Energy Dashboard ready
-- Filter status binary sensor + Repair Issue with one-click fix
-- Party timer, bypass thresholds, temperature corrections as number entities
-- House type, pre-heater, safety manager, external sensor types as select entities
-- Installer settings via HTTP Basic Auth (`/install/install.htm`)
-- Automatic time synchronisation incl. DST on startup and every 24 h
-- Optimistic updates — UI responds immediately without waiting for next poll
-- Re-auth flow, Reconfigure flow
-- Full translations DE + EN
-- Download diagnostics with auto-redacting
-- 161 automated tests
-- Quality Scale: Platinum
+### Neu
+
+- Self-kalibrierende Analytics-Engine (`KWLAnalytics`) mit Welford-Algorithmus
+- Dynamische Leistungsberechnung (EC-Motor-Modell P = P_base + k × (n/n_ref)³)
+- Diagnostik-Entities: Bypass-Leckage, Motor-Asymmetrie, Bypass-Empfehlung
+- Gerätemodell-Auswahl (250 touch / 400 touch) im Options Flow
+- Vollständige DE/EN Übersetzungsunterstützung
+- Sommer/Winter-Baselines (48h-EMA Außentemperatur, 10°C Schwelle)
+- Erste-Winter-Alarmierung für ε_exhaust und Energiebilanz
+
+---
+
+## [1.3.1] – 2025
+
+### Neu
+
+- Abgeleitete Diagnose-Sensoren (Wärmerückgewinnungsgrad, Frost-Risiko)
+- Options Flow mit Scan-Intervall und Watt-Konfiguration
+- Übersetzungen DE/EN
+- Automation-Beispiele in der Dokumentation
+
+---
+
+## [1.1.x] – 2025
+
+### Behoben
+
+- Kritische `AttributeError`-Regression bei fehlenden XML-Tags behoben
+- Robusteres XML-Parsing bei unvollständigen Antworten
+
+---
+
+## [1.0.0] – 2024
+
+### Erstveröffentlichung
+
+- Unterstützung für profi-air 250/400 touch (HTTP XML)
+- Grundlegende Sensor-Entities (Temperaturen, RPM, Lüftungsstufe)
+- Lüfter-Entity mit Stufen 1–4
+- Config Flow mit Installateur-Authentifizierung
+- HACS-Distribution

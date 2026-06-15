@@ -300,7 +300,11 @@ class NightCoolingTracker:
         return round(sum(recent) / len(recent), 2) if recent else None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"events": [[ts, d] for ts, d in self._events]}
+        return {
+            "events": [[ts, d] for ts, d in self._events],
+            "in_cooling": self._in_cooling,
+            "session_start_temp": self._session_start_temp,
+        }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "NightCoolingTracker":
@@ -311,6 +315,8 @@ class NightCoolingTracker:
                 [(float(e[0]), float(e[1])) for e in raw if len(e) == 2],
                 maxlen=MAX_NIGHT_EVENTS,
             )
+            obj._in_cooling = bool(d.get("in_cooling", False))
+            obj._session_start_temp = d.get("session_start_temp")
         return obj
 
 

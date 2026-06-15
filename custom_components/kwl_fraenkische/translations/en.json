@@ -42,12 +42,25 @@
           "watt_level_3": "Level 3 – Nominal Ventilation (W)",
           "watt_level_4": "Level 4 – Intensive Ventilation (W)"
         }
+      },
+      "installer_menu": {
+        "title": "Installer Access",
+        "description": "Do you want to enter installer credentials?\n\n**With credentials:** Full write access (ventilation levels, modes).\n**Skip:** Read-only — all sensor data available, no control.",
+        "menu_options": {
+          "auth": "Enter credentials",
+          "skip_installer": "Skip (read-only access)"
+        }
+      },
+      "confirm_flex": {
+        "title": "Device Detected",
+        "description": "A profi-air flex/flat device was found:\n\n**Model:** {model}\n**Firmware:** {firmware}\n**Fan switch:** Position {switch}\n**Host:** {host}\n\nConfirm to set up."
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to the KWL. Check IP address and network.",
       "invalid_response": "Unexpected response — is this a Fränkische Rohrwerke KWL?",
-      "invalid_auth": "Incorrect username or password."
+      "invalid_auth": "Incorrect username or password.",
+      "unknown_device_type": "Unknown device type (code: {type_code}). Only profi-air 250/360 flex and 180 flat are supported."
     },
     "abort": {
       "already_configured": "This KWL is already configured (same MAC address).",
@@ -188,6 +201,42 @@
       },
       "spi_stufe4": {
         "name": "Specific power input Stufe 4"
+      },
+      "current_mode_text": {
+        "name": "Operating Mode"
+      },
+      "alarm_text": {
+        "name": "Alarm"
+      },
+      "preheater_duty_pct": {
+        "name": "Pre-heater Duty Cycle"
+      },
+      "hours_total": {
+        "name": "Total Operating Hours"
+      },
+      "bypass_tmin": {
+        "name": "Bypass Minimum Temperature"
+      },
+      "bypass_tmax": {
+        "name": "Bypass Maximum Temperature"
+      },
+      "temp_room": {
+        "name": "Room Temperature"
+      },
+      "voc_ppm": {
+        "name": "VOC"
+      },
+      "rh_percent": {
+        "name": "Relative Humidity"
+      },
+      "co2_ppm": {
+        "name": "CO₂"
+      },
+      "motor_abluft_rpm_flex": {
+        "name": "Extract Fan RPM"
+      },
+      "motor_zuluft_rpm_flex": {
+        "name": "Supply Fan RPM"
       }
     },
     "binary_sensor": {
@@ -238,6 +287,12 @@
       },
       "fan_law_anomaly": {
         "name": "Fan law anomaly"
+      },
+      "alarm_active": {
+        "name": "Alarm Active"
+      },
+      "preheater_active": {
+        "name": "Pre-heater Active"
       }
     },
     "number": {
@@ -261,6 +316,9 @@
       },
       "kalibrierung_aussenluft": {
         "name": "Outdoor Temp Correction"
+      },
+      "filter_total_days_flex": {
+        "name": "Filter Interval"
       }
     },
     "select": {
@@ -304,6 +362,18 @@
       },
       "ext_sensor_type_4": {
         "name": "External Sensor 4 Type"
+      },
+      "operating_mode": {
+        "name": "Operating Mode",
+        "state": {
+          "Manuell": "Manual",
+          "Bedarfsgesteuert": "Demand-Controlled",
+          "Wochenprogramm": "Weekly Schedule",
+          "Urlaub": "Away",
+          "Sommer": "Summer",
+          "Nacht": "Night",
+          "Kaminbetrieb": "Fireplace Mode"
+        }
       }
     },
     "button": {
@@ -315,6 +385,12 @@
       },
       "analytics_reset": {
         "name": "Reset analytics baselines"
+      },
+      "filter_reset_flex": {
+        "name": "Acknowledge Filter Alarm"
+      },
+      "alarm_clear": {
+        "name": "Clear Alarm"
       }
     }
   },
@@ -348,6 +424,17 @@
     "motor_asymmetry": {
       "title": "KWL motor asymmetry detected",
       "description": "Supply and exhaust motor RPM differ by more than 22 % or exhaust is faster than supply. Possible motor wear or a one-sided filter blockage. Check filters and motors."
+    },
+    "annual_maintenance": {
+      "title": "profi-air flex Annual Maintenance Due",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Maintenance completed?",
+            "description": "The device has accumulated over 8760 operating hours. Annual maintenance (fans, heat exchanger, filter, seals) recommended. Confirm when done — the maintenance counter will be reset."
+          }
+        }
+      }
     }
   },
   "options": {

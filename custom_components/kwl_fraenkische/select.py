@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA
+from .const import CONF_PROTOCOL, DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA, FLEX_MODE_TEXT, FLEX_MODE_TO_WRITE, PROTOCOL_HTTP, PROTOCOL_MODBUS
 from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 1
@@ -65,6 +65,7 @@ class KWLSelectDescription(SelectEntityDescription):
     required_tag: str | None = field(default=None)
     required_endpoint: str | None = field(default=None)
     entity_category: EntityCategory | None = field(default=None)
+    supported_protocols: frozenset[str] | None = field(default=None)
 
 
 def _setup_url(host: str) -> str:
@@ -181,6 +182,17 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
         post_field="extSensor4",
         post_url_fn=_install_url,
         value_fn=lambda d: _normalize_sensor_type(d.ext_sensor_type_4),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
+    ),
+
+    # ── Flex-only Selects (profi-air 250/360 flex, 180 flat) ──────────────────
+    KWLSelectDescription(
+        key="operating_mode",
+        name="Betriebsmodus",
+        icon="mdi:cog",
+        options=list(FLEX_MODE_TEXT.values()),
+        value_fn=lambda d: d.current_mode_text,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
 )
 
@@ -214,14 +226,67 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: KWLCoordinator = entry.runtime_data
-    caps = coordinator.capabilities
+    coordinator = entry.runtime_data
+    protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
-    supported = [d for d in SELECTS if caps is None or _is_supported(d, caps)]
-    async_add_entities(
-        KWLSelect(coordinator, entry, description, mac)
-        for description in supported
-    )
+
+    if protocol == PROTOCOL_MODBUS:
+        supported = [
+            d for d in SELECTS
+            if (d.supported_protocols is None or PROTOCOL_MODBUS in d.supported_protocols)
+            and not d.post_url_fn   # touch-Selects POSTen zu HTTP → auto-ausgeschlossen
+            and not d.required_tag
+            and not d.required_endpoint
+        ]
+        async_add_entities(
+            KWLFlexSelect(coordinator, entry, d, mac) for d in supported
+        )
+    else:
+        caps = coordinator.capabilities
+        supported = [
+            d for d in SELECTS
+            if (d.supported_protocols is None or PROTOCOL_HTTP in d.supported_protocols)
+            and (caps is None or _is_supported(d, caps))
+        ]
+        async_add_entities(
+            KWLSelect(coordinator, entry, d, mac) for d in supported
+        )
+
+
+class KWLFlexSelect(CoordinatorEntity, SelectEntity):  # type: ignore[type-arg]
+    """Select-Entity für Flex-Geräte (Modbus TCP)."""
+
+    _attr_has_entity_name = True
+    entity_description: KWLSelectDescription
+
+    def __init__(self, coordinator, entry: ConfigEntry, description: KWLSelectDescription, mac: str) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{mac}_{description.key}"
+        self._attr_device_info = coordinator.device_info
+        self._attr_options = description.options or []
+        if not description.translation_key:
+            self._attr_translation_key = description.key
+        self.entity_id = f"select.{coordinator.model_slug}_{description.key}"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success and self.coordinator.data is not None
+
+    @property
+    def current_option(self) -> str | None:
+        if not self.available:
+            return None
+        value = self.entity_description.value_fn(self.coordinator.data)
+        # Nur gültige Optionen zurückgeben — unbekannte Modi (z.B. "Modus 99") als None
+        if value not in (self.entity_description.options or []):
+            return None
+        return value
+
+    async def async_select_option(self, option: str) -> None:
+        key = self.entity_description.key
+        if key == "operating_mode":
+            await self.coordinator.async_set_mode(option)
 
 
 class KWLSelect(CoordinatorEntity[KWLCoordinator], SelectEntity):
@@ -242,6 +307,7 @@ class KWLSelect(CoordinatorEntity[KWLCoordinator], SelectEntity):
         self._attr_unique_id = f"{mac}_{description.key}"
         self._attr_device_info = coordinator.device_info
         self._attr_options = description.options
+        self.entity_id = f"select.{coordinator.model_slug}_{description.key}"
         self._optimistic_option: str | None = None
 
     def _handle_coordinator_update(self) -> None:

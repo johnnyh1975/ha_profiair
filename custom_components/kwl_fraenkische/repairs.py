@@ -24,7 +24,7 @@ async def async_create_fix_flow(
     """Erstellt den passenden Fix-Flow fuer ein Repair Issue."""
     if issue_id == "filter_needs_replacement":
         return FilterRepairFlow()
-    if issue_id == "annual_maintenance_due":
+    if issue_id in ("annual_maintenance_due", "annual_maintenance"):
         return AnnualMaintenanceRepairFlow()
     return ConfirmRepairFlow()
 
@@ -102,33 +102,40 @@ class AnnualMaintenanceRepairFlow(RepairsFlow):
                 self.data if hasattr(self, "data") else None,
             )
             if coordinator:
-                # Schwellenwert anheben -- naechste Warnung erst in weiteren 8760h
                 from .coordinator import ANNUAL_MAINTENANCE_HOURS
-                current = sum(filter(None, [
-                    coordinator.data.hours_level_1 if coordinator.data else None,
-                    coordinator.data.hours_level_2 if coordinator.data else None,
-                    coordinator.data.hours_level_3 if coordinator.data else None,
-                    coordinator.data.hours_level_4 if coordinator.data else None,
-                ]))
-                new_threshold = current + ANNUAL_MAINTENANCE_HOURS
-                coordinator._maintenance_next_threshold = new_threshold
+                from .const import CONF_PROTOCOL, PROTOCOL_MODBUS
 
-                # In entry.data persistieren -- ueberlebt HA-Neustart ohne
-                # options_update_listener auszuloesen (der wuerde async_reload triggern)
                 entry = coordinator.config_entry
-                self.hass.config_entries.async_update_entry(
-                    entry,
-                    data={
-                        **entry.data,
-                        "maintenance_next_threshold": new_threshold,
-                    },
-                )
-                _LOGGER.info(
-                    "KWL Jahreswartung quittiert -- naechste Warnung bei %.0f Betriebsstunden",
-                    new_threshold,
-                )
+                protocol = entry.data.get(CONF_PROTOCOL, "http")
+
+                if protocol == PROTOCOL_MODBUS:
+                    # Flex: async_reset_analytics() kümmert sich um Threshold
+                    await coordinator.async_reset_analytics()
+                else:
+                    # Touch: Stunden der 4 Stufen summieren
+                    data = coordinator.data
+                    current = sum(filter(None, [
+                        data.hours_level_1 if data else None,
+                        data.hours_level_2 if data else None,
+                        data.hours_level_3 if data else None,
+                        data.hours_level_4 if data else None,
+                    ]))
+                    new_threshold = current + ANNUAL_MAINTENANCE_HOURS
+                    coordinator._maintenance_next_threshold = new_threshold
+                    self.hass.config_entries.async_update_entry(
+                        entry,
+                        data={
+                            **entry.data,
+                            "maintenance_next_threshold": new_threshold,
+                        },
+                    )
+                    _LOGGER.info(
+                        "KWL Jahreswartung quittiert -- naechste Warnung bei %.0f Betriebsstunden",
+                        new_threshold,
+                    )
 
             ir.async_delete_issue(self.hass, DOMAIN, "annual_maintenance_due")
+            ir.async_delete_issue(self.hass, DOMAIN, "annual_maintenance")
             return self.async_create_entry(data={})  # type: ignore[no-any-return]
 
         return cast(dict[str, Any], self.async_show_form(

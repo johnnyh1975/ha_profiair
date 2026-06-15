@@ -42,12 +42,25 @@
           "watt_level_3": "Stufe 3 – Nennlüftung (W)",
           "watt_level_4": "Stufe 4 – Intensivlüftung (W)"
         }
+      },
+      "installer_menu": {
+        "title": "Installateur-Zugang",
+        "description": "Möchtest du Installateur-Zugangsdaten eingeben?\n\n**Mit Zugangsdaten:** Voller Schreibzugriff (Lüftungsstufen, Modi).\n**Überspringen:** Nur Lesen — alle Sensordaten verfügbar, keine Steuerung.",
+        "menu_options": {
+          "auth": "Zugangsdaten eingeben",
+          "skip_installer": "Überspringen (nur Lesezugriff)"
+        }
+      },
+      "confirm_flex": {
+        "title": "Gerät erkannt",
+        "description": "Ein profi-air flex/flat Gerät wurde gefunden:\n\n**Modell:** {model}\n**Firmware:** {firmware}\n**Lüfterschalter:** Position {switch}\n**Host:** {host}\n\nBestätigen zum Einrichten."
       }
     },
     "error": {
       "cannot_connect": "Verbindung zur KWL nicht möglich. IP-Adresse und Netzwerk prüfen.",
       "invalid_response": "Unerwartete Antwort – ist das eine KWL von Fränkische Rohrwerke?",
-      "invalid_auth": "Benutzername oder Passwort falsch."
+      "invalid_auth": "Benutzername oder Passwort falsch.",
+      "unknown_device_type": "Unbekannter Gerätetyp (Code: {type_code}). Nur profi-air 250/360 flex und 180 flat werden unterstützt."
     },
     "abort": {
       "already_configured": "Diese KWL ist bereits eingerichtet (gleiche MAC-Adresse).",
@@ -188,6 +201,42 @@
       },
       "spi_stufe4": {
         "name": "Spezifischer Leistungseintrag Stufe 4"
+      },
+      "current_mode_text": {
+        "name": "Betriebsmodus"
+      },
+      "alarm_text": {
+        "name": "Alarm"
+      },
+      "preheater_duty_pct": {
+        "name": "Vorheizregister Auslastung"
+      },
+      "hours_total": {
+        "name": "Gesamtbetriebsstunden"
+      },
+      "bypass_tmin": {
+        "name": "Bypass Mindesttemperatur"
+      },
+      "bypass_tmax": {
+        "name": "Bypass Maximaltemperatur"
+      },
+      "temp_room": {
+        "name": "Raumtemperatur"
+      },
+      "voc_ppm": {
+        "name": "VOC"
+      },
+      "rh_percent": {
+        "name": "Relative Feuchte"
+      },
+      "co2_ppm": {
+        "name": "CO₂"
+      },
+      "motor_abluft_rpm_flex": {
+        "name": "Abluft-Ventilator U/min"
+      },
+      "motor_zuluft_rpm_flex": {
+        "name": "Zuluft-Ventilator U/min"
       }
     },
     "binary_sensor": {
@@ -238,6 +287,12 @@
       },
       "fan_law_anomaly": {
         "name": "Fanlaufgesetz Abweichung"
+      },
+      "alarm_active": {
+        "name": "Alarm aktiv"
+      },
+      "preheater_active": {
+        "name": "Vorheizregister aktiv"
       }
     },
     "number": {
@@ -261,6 +316,9 @@
       },
       "kalibrierung_aussenluft": {
         "name": "Korrektur Außenluft"
+      },
+      "filter_total_days_flex": {
+        "name": "Filterintervall"
       }
     },
     "select": {
@@ -304,6 +362,18 @@
       },
       "ext_sensor_type_4": {
         "name": "Ext. Sensor 4 Typ"
+      },
+      "operating_mode": {
+        "name": "Betriebsmodus",
+        "state": {
+          "Manuell": "Manuell",
+          "Bedarfsgesteuert": "Bedarfsgesteuert",
+          "Wochenprogramm": "Wochenprogramm",
+          "Urlaub": "Urlaub",
+          "Sommer": "Sommer",
+          "Nacht": "Nacht",
+          "Kaminbetrieb": "Kaminbetrieb"
+        }
       }
     },
     "button": {
@@ -315,6 +385,12 @@
       },
       "analytics_reset": {
         "name": "Analytics Baselines zurücksetzen"
+      },
+      "filter_reset_flex": {
+        "name": "Filterfehler bestätigen"
+      },
+      "alarm_clear": {
+        "name": "Alarm quittieren"
       }
     }
   },
@@ -348,6 +424,17 @@
     "motor_asymmetry": {
       "title": "KWL Motor-Asymmetrie erkannt",
       "description": "Zuluft- und Abluftmotor-Drehzahl weichen mehr als 22 % ab oder Abluft dreht schneller als Zuluft. Möglicher Motorverschleiß oder einseitig verstopfter Filter. Filter und Motoren prüfen."
+    },
+    "annual_maintenance": {
+      "title": "profi-air flex Jahreswartung fällig",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Wartung durchgeführt?",
+            "description": "Das Gerät hat über 8760 Betriebsstunden angesammelt. Jährliche Wartung (Lüfter, Wärmetauscher, Filter, Dichtungen) empfohlen. Bestätigen wenn erledigt — der Wartungszähler wird zurückgesetzt."
+          }
+        }
+      }
     }
   },
   "options": {
