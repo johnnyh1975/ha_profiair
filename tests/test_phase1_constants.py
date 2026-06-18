@@ -357,9 +357,9 @@ class TestManifest:
     def _load(self):
         return json.loads(open(MANIFEST_PATH).read())
 
-    def test_version_is_2_0_0(self):
+    def test_version_is_2_0_1(self):
         m = self._load()
-        assert m["version"] == "2.0.0"
+        assert m["version"] == "2.0.1"
 
     def test_pymodbus_in_requirements(self):
         m = self._load()

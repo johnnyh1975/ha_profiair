@@ -423,10 +423,35 @@ class TestWriteMethodsSource:
                         return "\n".join(lines[item.lineno-1:item.end_lineno])
         return ""
 
-    def test_set_level_raises_not_implemented(self):
-        """async_set_level muss NotImplementedError werfen."""
+    def test_set_level_implemented_not_raising(self):
+        """async_set_level muss implementiert sein -- kein NotImplementedError mehr.
+
+        Begründung: prmRomIdxSpeedLevel ist UINT32 (2 Register). FC06 (Single
+        Register Write) kann nur 16 Bit schreiben und scheitert daher
+        erwartungsgemäß -- das ist keine offene Frage, sondern Modbus-Mechanik.
+        FC16 (_write_uint32, bereits für 5 andere Parameter genutzt) ist exakt
+        das richtige Werkzeug.
+        """
         src = self._method_source("async_set_level")
-        assert "NotImplementedError" in src
+        assert "NotImplementedError" not in src
+
+    def test_set_level_clamps_range(self):
+        src = self._method_source("async_set_level")
+        assert "max(1, min(4, level))" in src
+
+    def test_set_level_writes_offset_324(self):
+        src = self._method_source("async_set_level")
+        assert "self._write_uint32(324, level)" in src
+
+    def test_set_level_switches_to_manual_if_needed(self):
+        """Gerät übernimmt Stufenänderungen nur im Manual-Mode -- muss ggf. vorher wechseln."""
+        src = self._method_source("async_set_level")
+        assert "current_mode_text" in src
+        assert 'FLEX_MODE_TO_WRITE["Manuell"]' in src
+
+    def test_set_level_uses_lock(self):
+        src = self._method_source("async_set_level")
+        assert "async with self._lock:" in src
 
     def test_reset_filter_calls_refresh(self):
         """async_reset_filter muss async_request_refresh aufrufen (Option C)."""

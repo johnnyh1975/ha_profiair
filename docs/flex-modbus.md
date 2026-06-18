@@ -306,10 +306,23 @@ Wird bei Commissioning via cockpit pro gesetzt. Ableitbare Werte für Stufen 1/2
 
 ---
 
-## Offene Fragen (Stand: Planung v2.0.0)
+## Offene Fragen (Stand: v2.0.1)
 
 | # | Frage | Status |
 |---|---|---|
-| 1 | FC16-Block-Format für Fan-Level-Write: welche Register, welche Werte für Register 2–10? | ⏳ Torsten600 |
-| 2 | Watt-Messwerte Stufe 1–4 für 250 flex und 360 flex (Klammermessung) | ⏳ Torsten600 |
+| 1 | ~~FC16-Block-Format für Fan-Level-Write~~ | ✅ Implementiert in v2.0.1 — siehe unten |
+| 2 | Watt-Messwerte Stufe 1–4 für 250 flex und 360 flex (Klammermessung) | ⏳ Offen |
+
+**Zu #1:** Die ursprüngliche Annahme eines exotischen "Block-Formats" war nicht
+nötig. `prmRomIdxSpeedLevel` ist als UINT32 dokumentiert (2×16-Bit-Register,
+40325+40326). FC06 (Write Single Register) kann nur ein 16-Bit-Wort schreiben
+und scheitert daher erwartungsgemäß — das erklärt vollständig, warum
+FC06 nicht funktionierte. FC16 (Write Multiple Registers) schreibt beide
+Wörter atomar, exakt das Muster das `_write_uint32()` bereits für Modus,
+Filter-Reset, Alarm-Clear und Filter-Intervall verwendet. Implementiert in
+`async_set_level()`, inklusive automatischem Wechsel in den Manual-Mode
+(Voraussetzung laut Doku für Stufenänderungen).
+
+**Validierungsstatus:** Implementiert nach dokumentiertem Register-Verhalten,
+noch nicht an echter flex-Hardware bestätigt. Feedback von Testern willkommen.
 | 3 | A/B-Schalterstellung auf Torsten600s Gerät (Register 40085/40087) | ⏳ Torsten600 |

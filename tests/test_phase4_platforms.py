@@ -108,6 +108,18 @@ class TestInitProtocolBranching:
 
 class TestSensorPlatform:
 
+    def test_night_cooling_sensors_disabled_by_default(self):
+        """Bug-Fix: night_cooling_* zeigt wochenlang 'Unbekannt' bis erstes
+        qualifizierendes Ereignis — muss daher standardmäßig deaktiviert sein."""
+        src = _src("sensor.py")
+        for key in ("night_cooling_last_k", "night_cooling_7d_avg_k"):
+            idx = src.find(f'key="{key}"')
+            assert idx >= 0, f"{key} nicht gefunden"
+            block = src[idx:idx + 500]
+            assert "entity_registry_enabled_default=False" in block, (
+                f"{key} muss entity_registry_enabled_default=False haben"
+            )
+
     def test_supported_protocols_field_in_description(self):
         src = _src("sensor.py")
         assert "supported_protocols" in src
@@ -334,21 +346,27 @@ class TestNumberPlatform:
 # ── fan.py ────────────────────────────────────────────────────────────────────
 
 class TestFanPlatform:
+    """Seit Fan-Level-Implementierung: KWLFan funktioniert für beide Protokolle
+    identisch, kein Protocol-Guard mehr nötig (anders als zuvor angenommen)."""
 
-    def test_conf_protocol_imported(self):
+    def test_no_protocol_guard_in_setup_entry(self):
+        """Es darf KEINEN frühen return mehr geben -- Fan wird für beide Protokolle erstellt."""
+        src = _func_src("fan.py", "async_setup_entry")
+        assert "return" not in src
+
+    def test_setup_entry_creates_kwl_fan_unconditionally(self):
+        src = _func_src("fan.py", "async_setup_entry")
+        assert "KWLFan(coordinator, entry)" in src
+
+    def test_conf_protocol_no_longer_imported(self):
+        """CONF_PROTOCOL/PROTOCOL_HTTP wurden mit dem Guard obsolet."""
         src = _src("fan.py")
-        assert "CONF_PROTOCOL" in src
+        assert "CONF_PROTOCOL" not in src
 
-    def test_setup_entry_has_protocol_guard(self):
-        src = _func_src("fan.py", "async_setup_entry")
-        assert "CONF_PROTOCOL" in src or "protocol" in src.lower()
+    def test_any_coordinator_type_used(self):
+        src = _src("fan.py")
+        assert "AnyKWLCoordinator" in src
 
-    def test_setup_entry_returns_early_for_non_http(self):
-        """Für flex gibt es keinen Fan bis FC16-Block bestätigt."""
-        src = _func_src("fan.py", "async_setup_entry")
-        assert "return" in src
-
-    def test_fan_entity_only_for_http(self):
-        src = _func_src("fan.py", "async_setup_entry")
-        assert "PROTOCOL_HTTP" in src or "!= PROTOCOL_HTTP" in src \
-            or "PROTOCOL_MODBUS" in src
+    def test_flex_coordinator_imported(self):
+        src = _src("fan.py")
+        assert "KWLFlexCoordinator" in src

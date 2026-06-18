@@ -5,6 +5,59 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.0.1] – 2026-06
+
+### Neu: Lüftungsstufen-Steuerung für flex/flat
+
+`async_set_level()` ist jetzt implementiert (zuvor `NotImplementedError`).
+`prmRomIdxSpeedLevel` ist als UINT32 dokumentiert (2×16-Bit-Register,
+40325+40326) — FC06 (Write Single Register) kann nur ein 16-Bit-Wort
+schreiben und scheitert daher erwartungsgemäß; FC16 (Write Multiple
+Registers) schreibt beide Wörter atomar, exakt das Muster das bereits für
+Modus, Filter-Reset, Alarm-Clear und Filter-Intervall verwendet wird. Die
+Implementierung wechselt automatisch in den Manual-Mode, falls das Gerät
+sich in einem anderen Betriebsmodus befindet (Stufenänderungen werden laut
+Gerätedokumentation nur im Manual-Mode übernommen).
+
+Die Fan-Entity ist jetzt für flex/flat-Geräte verfügbar — der bisherige
+Protocol-Guard in `fan.py` wurde entfernt, da `KWLFan` ohne Änderung für
+beide Coordinator-Typen funktioniert.
+
+> **Hinweis:** Implementiert nach dokumentiertem Register-Verhalten, noch
+> nicht an echter flex/flat-Hardware validiert. Feedback von Testern
+> willkommen.
+
+### Behoben
+
+- **Diagnose-Genauigkeit beim Setup (flex/flat):** Drei zuvor identische
+  Fehlermeldungen ("Nicht erreichbar") sind jetzt unterscheidbar:
+  TCP-Verbindung fehlgeschlagen, verbunden aber keine Antwort auf
+  Register-Abfrage (`modbus_no_response` — deutet auf deaktiviertes
+  Modbus TCP oder falsche Slave-ID hin), und verbunden mit unbekanntem
+  Gerätetyp-Code (`unknown_device_type`, zeigt den Code direkt an).
+- **Ungefangene Exception bei Verbindungs-Timeout (touch):** `_fetch_device_info`
+  und `_test_auth` fingen nur `aiohttp.ClientError` ab. Ein Timeout (Gerät
+  antwortet gar nicht, z. B. bei nicht erreichbarer IP) wirft
+  `asyncio.TimeoutError`, was kein `ClientError` ist — die Exception lief
+  unbehandelt durch und HA zeigte "Unknown error occurred" statt einer
+  brauchbaren Meldung. Beide Funktionen fangen jetzt zusätzlich
+  `TimeoutError` ab.
+- **Modell-Selektor zeigte Rohwerte:** Die Options-Flow-Modellauswahl zeigte
+  `profi_air_250`/`profi_air_400` statt Klarnamen. Auf `SelectSelector` mit
+  `MODEL_DISPLAY`-Labels umgestellt.
+- **`night_cooling_last_k`/`night_cooling_7d_avg_k` zeigten wochenlang
+  "Unbekannt":** Diese Sensoren haben erst nach dem ersten qualifizierenden
+  Nachtkühlungs-Ereignis einen Wert (Stufe 4 + messbarer Temperaturabfall).
+  Jetzt standardmäßig deaktiviert, analog zu den anderen Analytics-Sensoren
+  mit Einlaufzeit.
+
+### Bekannte offene Punkte
+
+- Watt-Messwerte (Klammermessung) für profi-air 250 flex und 360 flex stehen
+  weiterhin aus.
+
+---
+
 ## [2.0.0] – 2026-06
 
 ### Neu: profi-air flex und flat Unterstützung (Modbus TCP)

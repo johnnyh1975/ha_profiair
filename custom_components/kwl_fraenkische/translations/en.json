@@ -60,7 +60,8 @@
       "cannot_connect": "Cannot connect to the KWL. Check IP address and network.",
       "invalid_response": "Unexpected response — is this a Fränkische Rohrwerke KWL?",
       "invalid_auth": "Incorrect username or password.",
-      "unknown_device_type": "Unknown device type (code: {type_code}). Only profi-air 250/360 flex and 180 flat are supported."
+      "unknown_device_type": "Unknown device type (code: {type_code}). Only profi-air 250/360 flex and 180 flat are supported.",
+      "modbus_no_response": "Modbus connection succeeded, but the device did not respond to the query. Check that Modbus TCP is enabled on the device and the slave ID is correct."
     },
     "abort": {
       "already_configured": "This KWL is already configured (same MAC address).",

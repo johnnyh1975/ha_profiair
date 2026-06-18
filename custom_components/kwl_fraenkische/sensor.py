@@ -524,6 +524,10 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         value_fn=lambda c: c.analytics.bypass_transitions_1h if c.analytics else None,
     ),
     # Night cooling
+    # Standardmäßig deaktiviert: zeigt "Unbekannt" bis das erste qualifizierende
+    # Nachtkühlungs-Ereignis aufgetreten ist (Stufe 4 + messbarer T_Abluft-Abfall).
+    # Kann je nach Klima/Dämmung Wochen dauern. Nutzer kann manuell aktivieren
+    # sobald Interesse an diesem Wert besteht.
     KWLAnalyticsSensorDescription(
         key="night_cooling_last_k",
         name="Nachtlueftung letzter Kuehlerfolg",
@@ -532,7 +536,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         suggested_display_precision=1,
         icon="mdi:weather-night",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=True,
+        entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_last_k if c.analytics else None,
     ),
     KWLAnalyticsSensorDescription(
@@ -543,7 +547,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         suggested_display_precision=1,
         icon="mdi:weather-night",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=True,
+        entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_7d_avg_k if c.analytics else None,
     ),
     # HRE analytics

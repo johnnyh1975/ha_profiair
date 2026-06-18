@@ -821,17 +821,24 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
     async def async_set_level(self, level: int) -> None:
         """Setzt die Lüftungsstufe (1–4).
 
-        Voraussetzung: Gerät muss in Manual-Mode sein.
-        Falls nicht: zuerst Manual-Modus aktivieren, dann Stufe setzen.
+        prmRomIdxSpeedLevel (Register 40325/40326) ist UINT32 — 2×16-Bit.
+        FC06 (Write Single Register) kann nur ein 16-Bit-Wort schreiben und
+        scheitert daher erwartungsgemäß (oberes Wort bliebe unverändert/0,
+        Wert wäre ungültig). FC16 (Write Multiple Registers) schreibt beide
+        Wörter atomar — exakt das Muster das _write_uint32() bereits für
+        Modus, Filter-Reset, Alarm-Clear und Filter-Intervall verwendet.
 
-        FC16-Block-Format: ausstehend (Torsten600 #XX).
-        Sobald bestätigt, wird NotImplementedError entfernt.
+        Das Gerät übernimmt Stufenänderungen laut Doku nur im Manual-Mode.
+        Ist das Gerät in einem anderen Modus, wird automatisch auf Manual
+        gewechselt — analog zu async_set_mode().
         """
-        raise NotImplementedError(
-            "Lüftungsstufen-Steuerung für flex-Modelle ausstehend. "
-            "FC16-Block-Format wird von Torsten600 bestätigt. "
-            "Siehe GitHub Issue für Fortschritt."
-        )
+        level = max(1, min(4, level))
+        async with self._lock:
+            if self.data is not None and self.data.current_mode_text != "Manuell":
+                await self._write_uint32(168, FLEX_MODE_TO_WRITE["Manuell"])
+                await asyncio.sleep(0.1)
+            await self._write_uint32(324, level)  # offset 324 = 40325
+        await self.async_request_refresh()  # Option C: sofortige Bestätigung
 
     async def async_set_mode(self, mode_name: str) -> None:
         """Setzt den Betriebsmodus (z.B. 'Manuell', 'Urlaub').

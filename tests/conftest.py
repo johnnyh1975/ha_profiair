@@ -173,3 +173,24 @@ class _FakeDataUpdateCoordinator2:
 
 import homeassistant.helpers.update_coordinator as _coord3
 _coord3.DataUpdateCoordinator = _FakeDataUpdateCoordinator2
+
+# Selector-Klassen für SelectSelector in Options Flow
+class _SelectOptionDict(dict):
+    def __init__(self, value=None, label=None):
+        super().__init__(value=value, label=label)
+
+class _SelectSelectorConfig:
+    def __init__(self, options=None, mode=None, **kwargs):
+        self.options = options
+        self.mode = mode
+
+class _SelectSelector:
+    def __init__(self, config=None):
+        self.config = config
+
+if "homeassistant.helpers.selector" not in sys.modules:
+    _stub("homeassistant.helpers.selector")
+import homeassistant.helpers.selector as _sel_mod
+_sel_mod.SelectSelector = _SelectSelector
+_sel_mod.SelectSelectorConfig = _SelectSelectorConfig
+_sel_mod.SelectOptionDict = _SelectOptionDict

@@ -9,6 +9,11 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectOptionDict,
+)
 
 from .const import (
     CONF_MODEL, CONF_PROTOCOL, CONF_SCAN_INTERVAL,
@@ -83,6 +88,25 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             # ── Modbus-Probe (flex / flat) ────────────────────────────────────
             flex_result = await _probe_modbus(host)
             if flex_result is not None:
+                if flex_result["model"] is None:
+                    if flex_result["unit_type"] is None:
+                        # Verbunden, aber keine Antwort auf Register-Abfrage
+                        errors["base"] = "modbus_no_response"
+                        return self.async_show_form(
+                            step_id="user",
+                            data_schema=STEP_USER_SCHEMA,
+                            errors=errors,
+                        )
+                    # Verbunden + gelesen, aber Unit-Typ nicht bekannt
+                    errors["base"] = "unknown_device_type"
+                    return self.async_show_form(
+                        step_id="user",
+                        data_schema=STEP_USER_SCHEMA,
+                        errors=errors,
+                        description_placeholders={
+                            "type_code": str(flex_result["unit_type"])
+                        },
+                    )
                 self._host = host
                 self._mac = flex_result["mac_id"]
                 self._protocol = PROTOCOL_MODBUS
@@ -371,7 +395,21 @@ class KWLOptionsFlow(OptionsFlow):
             vol.Required(
                 CONF_MODEL,
                 default=current_model,
-            ): vol.In([MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400]),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(
+                            value=MODEL_PROFI_AIR_250,
+                            label=MODEL_DISPLAY[MODEL_PROFI_AIR_250],
+                        ),
+                        SelectOptionDict(
+                            value=MODEL_PROFI_AIR_400,
+                            label=MODEL_DISPLAY[MODEL_PROFI_AIR_400],
+                        ),
+                    ],
+                    mode="dropdown",
+                )
+            ),
             vol.Required(
                 CONF_SCAN_INTERVAL,
                 default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
@@ -442,8 +480,12 @@ async def _probe_modbus(
 ) -> dict | None:
     """Modbus-TCP Probe: verbindet, liest Gerätedaten, gibt dict oder None zurück.
 
-    Returns dict mit 'model', 'mac_id', 'firmware', 'switch_position'
-    oder None wenn Verbindung fehlschlägt / Gerät kein bekannter flex-Typ ist.
+    Drei Ergebnis-Klassen, jede mit eigener Bedeutung für die UI:
+      None                                  → TCP-Verbindung fehlgeschlagen (Port nicht erreichbar)
+      {"unit_type": None,  "model": None}   → TCP verbunden, aber Register-Read fehlgeschlagen
+                                               (Modbus am Gerät deaktiviert, falsche Slave-ID, o.ä.)
+      {"unit_type": X,     "model": None}   → verbunden + gelesen, aber Unit-Typ X unbekannt
+      {"unit_type": X,     "model": "..."}  → vollständig erfolgreich
     """
     import logging as _log
     _log.getLogger("pymodbus").setLevel(_log.CRITICAL)
@@ -466,12 +508,18 @@ async def _probe_modbus(
             # System-ID → Unit-Typ (Byte 0 des UINT32)
             r = await client.read_holding_registers(address=2, count=2, device_id=1)
             if r.isError():
-                return None
+                # TCP-Verbindung stand, aber das Gerät antwortet nicht auf die Abfrage.
+                # Häufigste Ursachen: Modbus TCP am Gerät nicht aktiviert, falsche Slave-ID.
+                _LOGGER.debug(
+                    "Modbus-Probe: Verbindung zu %s erfolgreich, aber Register-Read fehlgeschlagen",
+                    host,
+                )
+                return {"unit_type": None, "model": None}
             unit_type = _u32(r.registers) & 0xFF
             model = UNIT_TYPE_TO_MODEL.get(unit_type)
             if model is None:
                 _LOGGER.debug("Modbus-Probe: unbekannter Unit-Typ %d auf %s", unit_type, host)
-                return None
+                return {"unit_type": unit_type, "model": None}
 
             # Firmware-Version
             fw_str = "?"
@@ -521,7 +569,12 @@ async def _fetch_device_info(host: str) -> dict | str:
                 if resp.status != 200:
                     return "cannot_connect"
                 text = await resp.text()
-    except aiohttp.ClientError:
+    except (aiohttp.ClientError, TimeoutError):
+        # TimeoutError separat, da aiohttp.ClientTimeout bei Ablauf
+        # asyncio.TimeoutError wirft — KEIN aiohttp.ClientError.
+        # Ohne diesen Fang: unbehandelte Exception → HA zeigt "Unknown error
+        # occurred" statt einer brauchbaren Meldung (betrifft v.a. nicht
+        # erreichbare IPs, bei denen die Verbindung nicht aktiv abgelehnt wird).
         return "cannot_connect"
 
     try:
@@ -550,6 +603,6 @@ async def _test_auth(host: str, username: str, password: str) -> str | None:
                     return "invalid_auth"
                 if resp.status != 200:
                     return "cannot_connect"
-    except aiohttp.ClientError:
+    except (aiohttp.ClientError, TimeoutError):
         return "cannot_connect"
     return None

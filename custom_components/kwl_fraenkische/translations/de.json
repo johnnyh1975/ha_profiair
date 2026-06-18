@@ -60,7 +60,8 @@
       "cannot_connect": "Verbindung zur KWL nicht möglich. IP-Adresse und Netzwerk prüfen.",
       "invalid_response": "Unerwartete Antwort – ist das eine KWL von Fränkische Rohrwerke?",
       "invalid_auth": "Benutzername oder Passwort falsch.",
-      "unknown_device_type": "Unbekannter Gerätetyp (Code: {type_code}). Nur profi-air 250/360 flex und 180 flat werden unterstützt."
+      "unknown_device_type": "Unbekannter Gerätetyp (Code: {type_code}). Nur profi-air 250/360 flex und 180 flat werden unterstützt.",
+      "modbus_no_response": "Modbus-Verbindung erfolgreich, aber das Gerät antwortet nicht auf die Abfrage. Prüfe, ob Modbus TCP am Gerät aktiviert ist und ob die Slave-ID korrekt ist."
     },
     "abort": {
       "already_configured": "Diese KWL ist bereits eingerichtet (gleiche MAC-Adresse).",

@@ -12,8 +12,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PROTOCOL, DOMAIN, PROTOCOL_HTTP
+from .const import DOMAIN
 from .coordinator import KWLCoordinator
+from .flex_coordinator import KWLFlexCoordinator
+
+AnyKWLCoordinator = KWLCoordinator | KWLFlexCoordinator
 
 PARALLEL_UPDATES = 1
 
@@ -43,14 +46,15 @@ async def async_setup_entry(
     entry: KWLConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    # Flex-Geräte: kein Fan bis FC16-Block-Format bestätigt (async_set_level → NotImplementedError)
-    if entry.data.get(CONF_PROTOCOL) != PROTOCOL_HTTP:
-        return
-    coordinator: KWLCoordinator = entry.runtime_data
+    # KWLFan funktioniert für beide Coordinator-Typen identisch -- sie nutzt nur
+    # coordinator.data.current_level, .watt_map, .model_slug, .device_info und
+    # .async_set_level(), die auf KWLCoordinator und KWLFlexCoordinator gleich
+    # heißen. Keine separate Flex-Variante nötig.
+    coordinator = entry.runtime_data
     async_add_entities([KWLFan(coordinator, entry)])
 
 
-class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
+class KWLFan(CoordinatorEntity[AnyKWLCoordinator], FanEntity):
     """Repraesentiert die KWL-Lüftungsanlage als Fan-Entity.
 
     Die KWL laeuft immer -- es gibt kein echtes Ausschalten.
@@ -71,7 +75,7 @@ class KWLFan(CoordinatorEntity[KWLCoordinator], FanEntity):
     _attr_preset_modes = list(PRESET_MODES.keys())
     _attr_speed_count = 4
 
-    def __init__(self, coordinator: KWLCoordinator, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: AnyKWLCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         mac = entry.data.get("mac", entry.entry_id)
         self._attr_unique_id = f"{mac}_fan"

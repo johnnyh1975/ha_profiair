@@ -60,6 +60,40 @@ def _get_function_source(func_name: str) -> str:
 
 # ── Tests: Neue Steps vorhanden ───────────────────────────────────────────────
 
+class TestTimeoutErrorHandling:
+    """Bug-Fix: asyncio.TimeoutError ist KEIN aiohttp.ClientError — wurde
+    bisher nicht gefangen, was zu HA's generischem 'Unknown error occurred'
+    statt einer brauchbaren Fehlermeldung führte (v.a. bei unerreichbaren
+    IPs, wo die Verbindung nicht aktiv abgelehnt wird sondern stumm verfällt)."""
+
+    def test_fetch_device_info_catches_timeout_error(self):
+        src = _get_function_source("_fetch_device_info")
+        assert "TimeoutError" in src
+
+    def test_fetch_device_info_except_clause_includes_both(self):
+        src = _get_function_source("_fetch_device_info")
+        assert "except (aiohttp.ClientError, TimeoutError):" in src
+
+    def test_test_auth_catches_timeout_error(self):
+        src = _get_function_source("_test_auth")
+        assert "TimeoutError" in src
+
+    @pytest.mark.asyncio
+    async def test_fetch_device_info_returns_cannot_connect_on_timeout(self):
+        """Echter Funktionstest: TimeoutError während session.get() → 'cannot_connect', kein Crash."""
+        import sys
+        sys.path.insert(0, "/home/claude/kwl_src")
+        exec(open("/home/claude/kwl_src/tests/conftest.py").read())
+
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from custom_components.kwl_fraenkische.config_flow import _fetch_device_info
+
+        with patch("aiohttp.ClientSession.get", side_effect=TimeoutError()):
+            result = await _fetch_device_info("10.10.4.1")
+
+        assert result == "cannot_connect"
+
+
 class TestNewStepsExist:
     """Alle neuen Steps müssen als Methoden auf KWLConfigFlow vorhanden sein."""
 
@@ -292,6 +326,25 @@ class TestOptionsFlowProtocolAware:
         src = _get_class_method_source("KWLOptionsFlow", "_touch_schema")
         assert "CONF_MODEL" in src
 
+    def test_touch_schema_uses_select_selector_with_labels(self):
+        """Bug-Fix: vol.In([...]) zeigte Rohwerte (profi_air_250) statt
+        Klarnamen in der UI. SelectSelector mit MODEL_DISPLAY-Labels nutzen."""
+        src = _get_class_method_source("KWLOptionsFlow", "_touch_schema")
+        assert "SelectSelector" in src
+        assert "SelectOptionDict" in src
+        assert "MODEL_DISPLAY" in src
+
+    def test_touch_schema_no_longer_uses_bare_vol_in_for_model(self):
+        """vol.In([MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400]) muss ersetzt sein."""
+        src = _get_class_method_source("KWLOptionsFlow", "_touch_schema")
+        assert "vol.In([MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400])" not in src
+
+    def test_select_selector_imported(self):
+        src = _source()
+        assert "SelectSelector" in src
+        assert "SelectSelectorConfig" in src
+        assert "SelectOptionDict" in src
+
     def test_flex_schema_no_model_selector(self):
         src = _get_class_method_source("KWLOptionsFlow", "_flex_schema")
         assert "CONF_MODEL" not in src
@@ -366,3 +419,75 @@ class TestImportsAndConstants:
     def test_version_still_4(self):
         src = _source()
         assert "VERSION = 4" in src
+
+
+class TestUnknownUnitTypeHandling:
+    """Bug-Fix: unbekannter Unit-Typ darf nicht in generischem cannot_connect verschwinden."""
+
+    def test_probe_modbus_returns_dict_not_none_for_unknown_type(self):
+        """Bei unbekanntem Unit-Typ: dict mit model=None statt bare None."""
+        src = _get_function_source("_probe_modbus")
+        assert '"unit_type": unit_type, "model": None' in src
+
+    def test_step_user_checks_model_none(self):
+        """async_step_user muss model=None Fall explizit abfangen."""
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert 'flex_result["model"] is None' in src
+
+    def test_step_user_shows_unknown_device_type_error(self):
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert "unknown_device_type" in src
+
+    def test_step_user_passes_type_code_placeholder(self):
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert "type_code" in src
+
+    def test_step_user_includes_description_placeholders_for_unknown_type(self):
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert "description_placeholders" in src
+
+
+class TestModbusNoResponseHandling:
+    """Bug-Fix: Register-Read-Fehler (verbunden, aber keine Antwort) darf nicht
+    mit echtem Verbindungsfehler (cannot_connect) verwechselt werden."""
+
+    def test_probe_modbus_returns_dict_when_read_fails(self):
+        """Bei fehlgeschlagenem Register-Read: dict mit unit_type=None statt bare None."""
+        src = _get_function_source("_probe_modbus")
+        assert 'return {"unit_type": None, "model": None}' in src
+
+    def test_probe_modbus_checks_is_error_before_unit_type(self):
+        src = _get_function_source("_probe_modbus")
+        # r.isError() Check muss vor der unit_type Extraktion erfolgen
+        is_error_pos = src.find("r.isError()")
+        unit_type_pos = src.find("unit_type = _u32")
+        assert is_error_pos >= 0 and unit_type_pos >= 0
+        assert is_error_pos < unit_type_pos
+
+    def test_step_user_checks_unit_type_none(self):
+        """async_step_user muss zwischen unit_type=None und unbekanntem Code unterscheiden."""
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert 'flex_result["unit_type"] is None' in src
+
+    def test_step_user_shows_modbus_no_response_error(self):
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        assert "modbus_no_response" in src
+
+    def test_modbus_no_response_error_in_all_translation_files(self):
+        import json
+        base = "/home/claude/kwl_src/custom_components/kwl_fraenkische/"
+        for fname in ("strings.json", "translations/de.json", "translations/en.json"):
+            data = json.loads(open(base + fname).read())
+            assert "modbus_no_response" in data["config"]["error"], (
+                f"modbus_no_response fehlt in {fname}"
+            )
+
+    def test_modbus_no_response_message_nonempty(self):
+        import json
+        base = "/home/claude/kwl_src/custom_components/kwl_fraenkische/"
+        for fname in ("strings.json", "translations/de.json", "translations/en.json"):
+            data = json.loads(open(base + fname).read())
+            msg = data["config"]["error"]["modbus_no_response"]
+            assert isinstance(msg, str) and len(msg) > 10
+
+
