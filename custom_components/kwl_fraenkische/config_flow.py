@@ -515,7 +515,9 @@ async def _probe_modbus(
                     host,
                 )
                 return {"unit_type": None, "model": None}
-            unit_type = _u32(r.registers) & 0xFF
+                
+            # Bit Shift aufgrund fehlerhafter Byte Order in den Registern der System-ID notwendig.
+            unit_type = (_u32(r.registers) >> 24) & 0xFF
             model = UNIT_TYPE_TO_MODEL.get(unit_type)
             if model is None:
                 _LOGGER.debug("Modbus-Probe: unbekannter Unit-Typ %d auf %s", unit_type, host)
