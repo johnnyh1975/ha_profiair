@@ -292,6 +292,86 @@ class TestDerivedProperties:
         data = _make_data(fan1_rpm=1150.0, fan2_rpm=1000.0, fan1_is_extract=True)
         assert data.motor_asymmetry is True
 
+    # ── filter_rpm_drift_pct / filter_rpm_drift_warning ──────────────────────
+    # Community-Beitrag Torsten600 (Juni 2026): RPM-Drift bei Stufe 3 vs.
+    # Inbetriebnahme-Referenz als Frühindikator für Filterverstopfung.
+
+    def test_filter_rpm_drift_none_when_not_level_3(self):
+        """Referenz-RPM wurde nur bei Stufe 3 erfasst -- bei anderen Stufen
+        wäre der Vergleich irreführend und muss None liefern."""
+        data = _make_data(
+            current_level=2, fan1_rpm=1500.0, fan2_rpm=1600.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        assert data.filter_rpm_drift_pct is None
+        assert data.filter_rpm_drift_warning is False
+
+    def test_filter_rpm_drift_none_when_reference_missing(self):
+        """Keine Inbetriebnahme-Referenz vorhanden (z.B. ältere Firmware
+        ohne Register 518/520) → None statt falscher Berechnung."""
+        data = _make_data(
+            current_level=3, fan1_rpm=1500.0, fan2_rpm=1600.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=None, ref_rpm_supply_s3=None,
+        )
+        assert data.filter_rpm_drift_pct is None
+
+    def test_filter_rpm_drift_zero_when_matching_reference(self):
+        """Aktuelle RPM == Referenz-RPM → 0% Drift, kein Filterproblem."""
+        data = _make_data(
+            current_level=3, fan1_rpm=1500.0, fan2_rpm=1600.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        assert data.filter_rpm_drift_pct == pytest.approx(0.0, abs=0.01)
+        assert data.filter_rpm_drift_warning is False
+
+    def test_filter_rpm_drift_positive_below_warning_threshold(self):
+        """Leichte Drift (< 8%) → Wert berechnet, aber keine Warnung."""
+        # fan1=Abluft=1575 (Referenz 1500 → +5%), fan2=Zuluft=1600 (Referenz 1600 → 0%)
+        data = _make_data(
+            current_level=3, fan1_rpm=1575.0, fan2_rpm=1600.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        assert data.filter_rpm_drift_pct == pytest.approx(5.0, abs=0.1)
+        assert data.filter_rpm_drift_warning is False
+
+    def test_filter_rpm_drift_warning_above_threshold(self):
+        """Drift >= 8% (Schwellenwert) → Warnung aktiv."""
+        # fan1=Abluft=1650 (Referenz 1500 → +10%)
+        data = _make_data(
+            current_level=3, fan1_rpm=1650.0, fan2_rpm=1600.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        assert data.filter_rpm_drift_pct == pytest.approx(10.0, abs=0.1)
+        assert data.filter_rpm_drift_warning is True
+
+    def test_filter_rpm_drift_uses_worse_of_both_fans(self):
+        """Konservativ: die größere Abweichung beider Lüfter wird gemeldet,
+        selbst wenn der andere Lüfter unauffällig ist."""
+        # Abluft (fan1) bei Referenz, Zuluft (fan2) mit 12% Drift
+        data = _make_data(
+            current_level=3, fan1_rpm=1500.0, fan2_rpm=1792.0,
+            fan1_is_extract=True,
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        assert data.filter_rpm_drift_pct == pytest.approx(12.0, abs=0.1)
+        assert data.filter_rpm_drift_warning is True
+
+    def test_filter_rpm_drift_respects_fan1_is_extract_mapping(self):
+        """Drift-Berechnung muss dem A/B-Schalter folgen -- bei vertauschter
+        Zuordnung (fan1_is_extract=False) muss fan2 als Abluft gewertet werden."""
+        data = _make_data(
+            current_level=3, fan1_rpm=1600.0, fan2_rpm=1650.0,
+            fan1_is_extract=False,  # fan2 = Abluft, fan1 = Zuluft
+            ref_rpm_extract_s3=1500, ref_rpm_supply_s3=1600,
+        )
+        # Abluft (fan2) = 1650 vs Referenz 1500 → +10%; Zuluft (fan1) = 1600 vs 1600 → 0%
+        assert data.filter_rpm_drift_pct == pytest.approx(10.0, abs=0.1)
+
     def test_bypass_leaking_false_when_open(self):
         """Bypass offen → kein Leckage-Alarm."""
         data = _make_data(bypass_state_raw=255, t1=25.0, t3=24.0, t4=24.5)

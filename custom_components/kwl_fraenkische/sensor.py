@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from . import KWLConfigEntry
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -49,6 +49,11 @@ class KWLSensorDescription(SensorEntityDescription):
 class KWLAnalyticsSensorDescription(SensorEntityDescription):
     """Description for sensors backed by KWLAnalytics."""
     value_fn: Callable[[KWLCoordinator], float | int | str | None] = lambda c: None
+    # Optional: zusaetzliche Kontext-Attribute fuer Detailwerte ohne eigenen
+    # Trend-Sensor (z.B. Details zum letzten Nachtkuehlungs-Ereignis).
+    # Der Recorder fuehrt fuer Attribute KEINE Langzeitstatistik -- daher nur
+    # fuer Werte verwenden, deren zeitlicher Verlauf nicht separat interessiert.
+    attrs_fn: Callable[[KWLCoordinator], dict[str, Any]] | None = field(default=None)
     entity_category: EntityCategory | None = field(default=EntityCategory.DIAGNOSTIC)
     # Analytics-Sensoren sind aktuell touch-only (Baselines noch nicht für flex kalibriert)
     supported_protocols: frozenset[str] | None = field(default=frozenset({PROTOCOL_HTTP}))
@@ -483,6 +488,21 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         value_fn=lambda d: d.motor_zuluft_rpm,
         supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
+    KWLSensorDescription(
+        key="filter_rpm_drift_pct",
+        name="Filter RPM-Drift",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="%",
+        suggested_display_precision=1,
+        icon="mdi:air-filter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # Community-Beitrag Torsten600 (Juni 2026): RPM-Abweichung von der
+        # Inbetriebnahme-Referenz bei Stufe 3 -- nur gültig wenn Stufe 3 aktiv
+        # ist (None sonst). Steigt mit zunehmendem Filterwiderstand.
+        value_fn=lambda d: d.filter_rpm_drift_pct,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
 )
 
 # ── Analytics-backed sensors ──────────────────────────────────────────────────
@@ -538,6 +558,14 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_last_k if c.analytics else None,
+        # Detailwerte zum letzten Ereignis als Attribute statt eigene Sensoren --
+        # der Recorder fuehrt fuer Attribute keine Langzeitstatistik, aber fuer
+        # diese Werte interessiert ohnehin nur der jeweils letzte Stand.
+        attrs_fn=lambda c: {
+            "aktive_minuten": c.analytics.night_cooling_last_active_minutes,
+            "bypass_offen_anteil_pct": c.analytics.night_cooling_last_bypass_open_pct,
+            "thermisches_potenzial_k": c.analytics.night_cooling_last_avg_potential_k,
+        } if c.analytics else {},
     ),
     KWLAnalyticsSensorDescription(
         key="night_cooling_7d_avg_k",
@@ -549,6 +577,38 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_7d_avg_k if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="night_cooling_7d_avg_efficiency",
+        name="Nachtlueftung Effizienz Ø 7 Tage",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="K/h",
+        suggested_display_precision=2,
+        icon="mdi:speedometer",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.night_cooling_7d_avg_efficiency_k_per_h if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="night_cooling_inactive_nights_7d",
+        name="Nachtlueftung inaktive Naechte (7 Tage)",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="",
+        icon="mdi:fan-off",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.night_cooling_inactive_nights_7d if c.analytics else None,
+    ),
+    KWLAnalyticsSensorDescription(
+        key="night_cooling_7d_avg_active_minutes",
+        name="Nachtlueftung aktive Minuten Ø 7 Tage",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="min",
+        suggested_display_precision=0,
+        icon="mdi:timer-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.analytics.night_cooling_7d_avg_active_minutes if c.analytics else None,
     ),
     # HRE analytics
     KWLAnalyticsSensorDescription(
@@ -753,6 +813,12 @@ class KWLAnalyticsSensor(CoordinatorEntity[KWLCoordinator], SensorEntity):
         if not self.available:
             return None
         return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if not self.available or self.entity_description.attrs_fn is None:
+            return None
+        return self.entity_description.attrs_fn(self.coordinator)
 
 async def async_setup_entry(
     hass: HomeAssistant,

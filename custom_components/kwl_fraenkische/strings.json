@@ -294,6 +294,9 @@
       },
       "preheater_active": {
         "name": "Vorheizregister aktiv"
+      },
+      "filter_clogging_suspected": {
+        "name": "Filterverstopfung Verdacht"
       }
     },
     "number": {

@@ -112,10 +112,15 @@ class TestSensorPlatform:
         """Bug-Fix: night_cooling_* zeigt wochenlang 'Unbekannt' bis erstes
         qualifizierendes Ereignis — muss daher standardmäßig deaktiviert sein."""
         src = _src("sensor.py")
-        for key in ("night_cooling_last_k", "night_cooling_7d_avg_k"):
+        for key in (
+            "night_cooling_last_k", "night_cooling_7d_avg_k",
+            "night_cooling_7d_avg_efficiency",
+            "night_cooling_inactive_nights_7d",
+            "night_cooling_7d_avg_active_minutes",
+        ):
             idx = src.find(f'key="{key}"')
             assert idx >= 0, f"{key} nicht gefunden"
-            block = src[idx:idx + 500]
+            block = src[idx:idx + 600]
             assert "entity_registry_enabled_default=False" in block, (
                 f"{key} muss entity_registry_enabled_default=False haben"
             )

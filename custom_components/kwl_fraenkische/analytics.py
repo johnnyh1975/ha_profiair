@@ -45,6 +45,12 @@ MIN_N_HRE: int = 50       # 50 gated readings (η/ε slow to accumulate in summe
 RPM_ALERT_SIGMA: float = 3.0    # z-score for RPM anomaly (low RPM → motor wear)
 RATIO_ALERT_SIGMA: float = 3.0  # z-score for Zu/Ab ratio deviation
 ETA_ALERT_DELTA: float = 0.08   # 8 pp sustained drop below seasonal baseline
+# Community-Beitrag Torsten600 (Juni 2026, urspr. für flex-Referenz-RPM-Vergleich):
+# zunehmender Filterwiderstand zwingt den EC-Motor bei gleicher Stufe zu HÖHERER
+# Drehzahl, um den Volumenstrom zu halten -- die entgegengesetzte Richtung von
+# rpm_anomaly (Lagerverschleiß = niedrigere RPM). Eigener Schwellenwert, da
+# beide Phänomene unterschiedliche Ursachen und Handlungsempfehlungen haben.
+RPM_HIGH_ALERT_SIGMA: float = 3.0
 
 # ── Bypass episode tracking ───────────────────────────────────────────────────
 
@@ -57,7 +63,10 @@ BYPASS_HUNT_EPISODE_MIN: float = 15.0 # avg open episode below this → hunting
 # ── Night cooling ─────────────────────────────────────────────────────────────
 
 MAX_NIGHT_EVENTS: int = 30
-NIGHT_COOLING_MIN_DELTA_K: float = 0.5  # min T_abluft drop to count as valid
+MAX_NIGHT_SUMMARIES: int = 30  # jedes abgeschlossene Fenster, auch ohne Kuehlerfolg
+NIGHT_COOLING_MIN_DELTA_K: float = 0.5  # min net T_abluft drop to count as valid
+NIGHT_WINDOW_START_HOUR: int = 22   # Fenster beginnt 22:00 Uhr (lokale Zeit)
+NIGHT_WINDOW_END_HOUR: int = 7      # Fenster endet 07:00 Uhr (lokale Zeit)
 
 # ── HRE gate conditions ───────────────────────────────────────────────────────
 
@@ -261,62 +270,261 @@ class BypassTracker:
 
 # ── Night cooling tracker ─────────────────────────────────────────────────────
 
-class NightCoolingTracker:
-    """Records T_abluft drop per Stufe-4 cooling activation.
+def _in_night_window(local_hour: int) -> bool:
+    """True wenn die Stunde innerhalb des 22:00-07:00 Fensters liegt."""
+    return local_hour >= NIGHT_WINDOW_START_HOUR or local_hour < NIGHT_WINDOW_END_HOUR
 
-    A "session" begins when fan goes to level 4 and ends when it drops back.
-    Only sessions with a net T_abluft drop ≥ MIN_DELTA_K are recorded.
-    This catches night cooling events regardless of clock time, and also
-    captures daytime Stufe-4 runs (which produce smaller but still real drops).
+
+def _window_id_for(timestamp: float) -> str:
+    """Eindeutige ID fuer das Nachtfenster zu dem dieser Zeitpunkt gehoert.
+
+    Das Fenster 22:00-07:00 ueberspannt Mitternacht -- Stunden 0-6 gehoeren
+    zum Fenster das am VORTAG um 22:00 begonnen hat. Die ID ist das Datum
+    des Fenster-Starts (22:00-Termin), unabhaengig davon ob der aktuelle
+    Zeitpunkt vor oder nach Mitternacht liegt.
+    """
+    lt = time.localtime(timestamp)
+    if lt.tm_hour < NIGHT_WINDOW_END_HOUR:
+        # Gehoert zum Fenster das gestern Abend begann
+        anchor = timestamp - 86400.0
+        lt = time.localtime(anchor)
+    return time.strftime("%Y-%m-%d", lt)
+
+
+class NightCoolingTracker:
+    """Misst den Nachtkuehlungserfolg im festen Zeitfenster 22:00-07:00 Uhr.
+
+    Im Gegensatz zu einer reinen Session-Erkennung (Stufe4-Start bis Stufe4-Ende)
+    ist diese Methode robust gegen kurze Unterbrechungen -- z.B. wenn das Geraet
+    nach ca. 2h intern auf eine niedrigere Stufe zurueckfaellt und die HA-Automation
+    Sekunden spaeter wieder korrigiert. Solche Korrekturzyklen wuerden eine
+    session-basierte Erkennung in viele kleine Fragmente zerreissen, von denen
+    keines die Mindestschwelle erreicht.
+
+    Erfasst pro Nacht zusaetzlich zum reinen Delta:
+    - aktive Minuten mit Stufe 4 (Aktivitaets-Normalisierung)
+    - Effizienz in K pro aktiver Stunde (trennt Kuehlerfolg von reiner
+      natuerlicher Nachtabkuehlung)
+    - Bypass-Offen-Anteil waehrend der aktiven Kuehlzeit (deckt auf wenn die
+      Bypass-Strategie nicht mitspielt, selbst wenn Stufe 4 nominell lief)
+    - durchschnittliches thermisches Potenzial (T_abluft - T_aussenluft)
+      waehrend der aktiven Kuehlzeit (war die Nacht ueberhaupt geeignet?)
     """
 
     def __init__(self) -> None:
-        self._events: deque[tuple[float, float]] = deque(maxlen=MAX_NIGHT_EVENTS)
-        self._session_start_temp: float | None = None
-        self._in_cooling: bool = False
+        self._events: deque[dict[str, Any]] = deque(maxlen=MAX_NIGHT_EVENTS)
+        # Jedes abgeschlossene Fenster, AUCH ohne Stufe-4-Aktivitaet -- separat
+        # von _events, da hier die Inaktivitaets-/Aktivitaets-Trends herkommen,
+        # unabhaengig davon ob ein Kuehlerfolg erzielt wurde.
+        self._summaries: deque[dict[str, Any]] = deque(maxlen=MAX_NIGHT_SUMMARIES)
+
+        # Zustand des aktuell offenen Fensters (None wenn kein Fenster aktiv)
+        self._window_active: bool = False
+        self._window_id: str | None = None
+        self._start_temp: float | None = None
+        self._start_ts: float | None = None
+
+        # Akkumulatoren fuer das aktuell offene Fenster
+        self._active_level4_seconds: float = 0.0
+        self._bypass_open_seconds: float = 0.0
+        self._potential_sum: float = 0.0
+        self._potential_n: int = 0
 
     def update(
-        self, fan_at_4: bool, temp_abluft: float | None, timestamp: float
+        self,
+        fan_at_4: bool,
+        temp_abluft: float | None,
+        temp_aussenluft: float | None,
+        bypass_open: bool | None,
+        timestamp: float,
+        poll_interval_s: float = 30.0,
     ) -> None:
-        if temp_abluft is None:
+        in_window = _in_night_window(time.localtime(timestamp).tm_hour)
+
+        if in_window and not self._window_active:
+            # Neues Fenster beginnt
+            self._window_active = True
+            self._window_id = _window_id_for(timestamp)
+            self._start_temp = temp_abluft
+            self._start_ts = timestamp
+            self._active_level4_seconds = 0.0
+            self._bypass_open_seconds = 0.0
+            self._potential_sum = 0.0
+            self._potential_n = 0
+
+        elif not in_window and self._window_active:
+            # Fenster endet jetzt -- abschliessen und Ereignis aufzeichnen
+            self._finalize_window(temp_abluft, timestamp)
+            self._window_active = False
+            self._window_id = None
+            self._start_temp = None
+            self._start_ts = None
+
+        if in_window and self._window_active:
+            if fan_at_4:
+                self._active_level4_seconds += poll_interval_s
+                if bypass_open:
+                    self._bypass_open_seconds += poll_interval_s
+                if temp_abluft is not None and temp_aussenluft is not None:
+                    self._potential_sum += (temp_abluft - temp_aussenluft)
+                    self._potential_n += 1
+
+    def _finalize_window(self, end_temp: float | None, end_ts: float) -> None:
+        if self._start_temp is None or end_temp is None:
             return
-        if fan_at_4 and not self._in_cooling:
-            self._session_start_temp = temp_abluft
-            self._in_cooling = True
-        elif not fan_at_4 and self._in_cooling and self._session_start_temp is not None:
-            delta = self._session_start_temp - temp_abluft
-            if delta >= NIGHT_COOLING_MIN_DELTA_K:
-                self._events.append((timestamp, round(delta, 2)))
-            self._in_cooling = False
-            self._session_start_temp = None
+
+        active_minutes = round(self._active_level4_seconds / 60.0, 1)
+
+        # Jedes abgeschlossene Fenster wird als Summary erfasst -- unabhaengig
+        # vom Kuehlerfolg. Das ist die Grundlage fuer Inaktivitaets-Erkennung:
+        # eine Nacht ohne jede Stufe-4-Aktivitaet ist ein Automations-Problem,
+        # kein Kuehlerfolg, egal wie stark die natuerliche Abkuehlung war.
+        self._summaries.append({"ts": end_ts, "active_minutes": active_minutes})
+
+        if self._active_level4_seconds <= 0:
+            # Stufe 4 wurde in diesem Fenster nie gesetzt -- kein Kuehlereignis,
+            # selbst wenn die Temperatur alleine durch natuerliche naechtliche
+            # Abkuehlung gefallen ist. Sonst wuerde eine inaktive Automation
+            # faelschlich als "Erfolg" durchgehen.
+            return
+
+        delta = self._start_temp - end_temp
+        if delta < NIGHT_COOLING_MIN_DELTA_K:
+            return  # Kein nennenswerter Kuehlerfolg -- kein Eintrag
+
+        active_hours = self._active_level4_seconds / 3600.0
+        efficiency = round(delta / active_hours, 2) if active_hours > 0.05 else None
+        bypass_pct = (
+            round(self._bypass_open_seconds / self._active_level4_seconds * 100.0, 1)
+            if self._active_level4_seconds > 0
+            else None
+        )
+        avg_potential = (
+            round(self._potential_sum / self._potential_n, 2)
+            if self._potential_n > 0
+            else None
+        )
+
+        self._events.append({
+            "ts": end_ts,
+            "delta_k": round(delta, 2),
+            "active_minutes": round(self._active_level4_seconds / 60.0, 1),
+            "efficiency_k_per_h": efficiency,
+            "bypass_open_pct": bypass_pct,
+            "avg_potential_k": avg_potential,
+        })
+
+    @property
+    def last_event(self) -> dict[str, Any] | None:
+        return self._events[-1] if self._events else None
 
     @property
     def last_event_k(self) -> float | None:
-        return self._events[-1][1] if self._events else None
+        ev = self.last_event
+        return ev["delta_k"] if ev else None
+
+    @property
+    def last_active_minutes(self) -> float | None:
+        ev = self.last_event
+        return ev["active_minutes"] if ev else None
+
+    @property
+    def last_efficiency_k_per_h(self) -> float | None:
+        ev = self.last_event
+        return ev["efficiency_k_per_h"] if ev else None
+
+    @property
+    def last_bypass_open_pct(self) -> float | None:
+        ev = self.last_event
+        return ev["bypass_open_pct"] if ev else None
+
+    @property
+    def last_avg_potential_k(self) -> float | None:
+        ev = self.last_event
+        return ev["avg_potential_k"] if ev else None
 
     def avg_k(self, window_days: float = 7.0) -> float | None:
         cutoff = time.time() - window_days * 86400.0
-        recent = [d for ts, d in self._events if ts >= cutoff]
+        recent = [e["delta_k"] for e in self._events if e["ts"] >= cutoff]
         return round(sum(recent) / len(recent), 2) if recent else None
+
+    def avg_efficiency_k_per_h(self, window_days: float = 7.0) -> float | None:
+        cutoff = time.time() - window_days * 86400.0
+        recent = [
+            e["efficiency_k_per_h"] for e in self._events
+            if e["ts"] >= cutoff and e["efficiency_k_per_h"] is not None
+        ]
+        return round(sum(recent) / len(recent), 2) if recent else None
+
+    def inactive_nights(self, window_days: float = 7.0) -> int:
+        """Anzahl Naechte ohne jede Stufe-4-Aktivitaet im Zeitfenster.
+
+        Hohe Werte deuten auf ein Automations- oder Konfigurationsproblem hin --
+        unabhaengig von der tatsaechlichen Kuehlwirkung.
+        """
+        cutoff = time.time() - window_days * 86400.0
+        return sum(
+            1 for s in self._summaries
+            if s["ts"] >= cutoff and s["active_minutes"] <= 0
+        )
+
+    def avg_active_minutes(self, window_days: float = 7.0) -> float | None:
+        """Durchschnittliche Stufe-4-Laufzeit ueber ALLE Naechte im Fenster,
+
+        auch jene ohne Kuehlerfolg. Ein ploetzlicher Rueckgang ist ein
+        Fruehindikator fuer ein Automatisierungsproblem, bevor es sich im
+        K-Wert zeigt.
+        """
+        cutoff = time.time() - window_days * 86400.0
+        recent = [s["active_minutes"] for s in self._summaries if s["ts"] >= cutoff]
+        return round(sum(recent) / len(recent), 1) if recent else None
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "events": [[ts, d] for ts, d in self._events],
-            "in_cooling": self._in_cooling,
-            "session_start_temp": self._session_start_temp,
+            "events": list(self._events),
+            "summaries": list(self._summaries),
+            "window_active": self._window_active,
+            "window_id": self._window_id,
+            "start_temp": self._start_temp,
+            "start_ts": self._start_ts,
+            "active_level4_seconds": self._active_level4_seconds,
+            "bypass_open_seconds": self._bypass_open_seconds,
+            "potential_sum": self._potential_sum,
+            "potential_n": self._potential_n,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "NightCoolingTracker":
         obj = cls()
-        if d:
-            raw = d.get("events", [])
-            obj._events = deque(
-                [(float(e[0]), float(e[1])) for e in raw if len(e) == 2],
-                maxlen=MAX_NIGHT_EVENTS,
-            )
-            obj._in_cooling = bool(d.get("in_cooling", False))
-            obj._session_start_temp = d.get("session_start_temp")
+        if not d:
+            return obj
+
+        raw_events = d.get("events", [])
+        parsed: list[dict[str, Any]] = []
+        for e in raw_events:
+            if isinstance(e, dict):
+                parsed.append(e)
+            elif isinstance(e, (list, tuple)) and len(e) == 2:
+                # Altformat (v1.4.0): [timestamp, delta_k] -- als Minimal-Eintrag uebernehmen
+                parsed.append({
+                    "ts": float(e[0]),
+                    "delta_k": float(e[1]),
+                    "active_minutes": None,
+                    "efficiency_k_per_h": None,
+                    "bypass_open_pct": None,
+                    "avg_potential_k": None,
+                })
+        obj._events = deque(parsed, maxlen=MAX_NIGHT_EVENTS)
+        obj._summaries = deque(d.get("summaries", []), maxlen=MAX_NIGHT_SUMMARIES)
+
+        obj._window_active = bool(d.get("window_active", False))
+        obj._window_id = d.get("window_id")
+        obj._start_temp = d.get("start_temp")
+        obj._start_ts = d.get("start_ts")
+        obj._active_level4_seconds = float(d.get("active_level4_seconds", 0.0))
+        obj._bypass_open_seconds = float(d.get("bypass_open_seconds", 0.0))
+        obj._potential_sum = float(d.get("potential_sum", 0.0))
+        obj._potential_n = int(d.get("potential_n", 0))
         return obj
 
 
@@ -379,6 +587,7 @@ class KWLAnalytics:
         self._last_eps: float | None = None       # fraction, not %
         self._last_balance: float | None = None
         self._last_rpm_z: float | None = None
+        self._last_rpm_established: bool = False
         self._last_ratio_z: float | None = None
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -404,11 +613,19 @@ class KWLAnalytics:
         self._bypass.update(snap.bypass_status, snap.timestamp, poll_interval_s)
 
         # ── Night cooling ─────────────────────────────────────────────────
-        self._night_cooling.update(snap.fan_at_level_4, snap.temp_abluft, snap.timestamp)
+        self._night_cooling.update(
+            fan_at_4=snap.fan_at_level_4,
+            temp_abluft=snap.temp_abluft,
+            temp_aussenluft=snap.temp_aussenluft,
+            bypass_open=_is_bypass_open(snap.bypass_status),
+            timestamp=snap.timestamp,
+            poll_interval_s=poll_interval_s,
+        )
 
         # ── RPM ───────────────────────────────────────────────────────────
         self._last_rpm_ab = None
         self._last_rpm_z = None
+        self._last_rpm_established = False
         if (
             snap.rpm_abluft is not None
             and snap.current_level in (1, 2, 3, 4)
@@ -418,6 +635,7 @@ class KWLAnalytics:
             ema = self._rpm[self._season][snap.current_level]
             ema.update(snap.rpm_abluft)
             self._last_rpm_z = ema.z_score(snap.rpm_abluft)
+            self._last_rpm_established = ema.is_established(MIN_N_RPM)
 
         # ── RPM ratio ────────────────────────────────────────────────────
         self._last_ratio = None
@@ -492,14 +710,30 @@ class KWLAnalytics:
         High RPM at the same voltage would indicate reduced load, not a fault.
         Suppressed until MIN_N_RPM samples exist for current level+season.
         """
-        level = None
-        if self._last_rpm_z is None or self._last_ts == 0.0:
+        if self._last_rpm_z is None or not self._last_rpm_established:
             return False
-        # Check that baseline is established — need the current level
-        # _last_rpm_z is only set when update() ran with a valid level,
-        # so we can read it directly from the EMA that was updated.
-        # The alert fires only on sustained negative z-score.
         return self._last_rpm_z < -RPM_ALERT_SIGMA
+
+    @property
+    def filter_clogging_suspected(self) -> bool:
+        """True when abluft RPM is significantly ABOVE the level+season baseline.
+
+        Community-Beitrag Torsten600 (Juni 2026): zunehmender Filterwiderstand
+        zwingt den EC-Motor bei gleicher Stufe zu höherer Drehzahl, um den
+        Volumenstrom zu halten -- ein früherer Indikator für Filterverstopfung
+        als das feste zeitbasierte Filterintervall, besonders relevant in
+        Umgebungen mit hoher Staub-/Pollenlast.
+
+        Bewusst getrennt von rpm_anomaly: gleiche Baseline, aber entgegen-
+        gesetzte Richtung und andere Ursache/Handlung (Filter wechseln statt
+        Motor/Lager prüfen). Self-calibrating: nutzt die ohnehin vorhandene
+        Stufe+Saison-Baseline -- kein zusätzlicher Hardware-Referenzwert nötig,
+        funktioniert daher identisch für Touch- und Flex-Geräte.
+        Suppressed until MIN_N_RPM samples exist for current level+season.
+        """
+        if self._last_rpm_z is None or not self._last_rpm_established:
+            return False
+        return self._last_rpm_z > RPM_HIGH_ALERT_SIGMA
 
     @property
     def ratio_anomaly(self) -> bool:
@@ -581,6 +815,63 @@ class KWLAnalytics:
     @property
     def night_cooling_7d_avg_k(self) -> float | None:
         return self._night_cooling.avg_k(7.0)
+
+    @property
+    def night_cooling_last_active_minutes(self) -> float | None:
+        """Aktive Stufe-4-Minuten im letzten 22:00-07:00-Fenster."""
+        return self._night_cooling.last_active_minutes
+
+    @property
+    def night_cooling_last_efficiency_k_per_h(self) -> float | None:
+        """K Abkuehlung pro aktiver Stufe-4-Stunde -- trennt Kuehlerfolg
+
+        von reiner natuerlicher Nachtabkuehlung. Hoher Wert = effiziente Nacht,
+        niedriger Wert trotz langer Laufzeit deutet auf schwaches thermisches
+        Potenzial oder eine Bypass-Stoerung hin.
+        """
+        return self._night_cooling.last_efficiency_k_per_h
+
+    @property
+    def night_cooling_7d_avg_efficiency_k_per_h(self) -> float | None:
+        return self._night_cooling.avg_efficiency_k_per_h(7.0)
+
+    @property
+    def night_cooling_inactive_nights_7d(self) -> int:
+        """Anzahl Naechte der letzten 7 Tage ohne jede Stufe-4-Aktivitaet.
+
+        Reine Automations-/Konfigurationsgesundheitsmetrik -- unabhaengig
+        von Temperaturerfolg. Hoher Wert deutet darauf hin dass die
+        Sommer-Kuehlungs-Automation nicht wie erwartet auslöst.
+        """
+        return self._night_cooling.inactive_nights(7.0)
+
+    @property
+    def night_cooling_7d_avg_active_minutes(self) -> float | None:
+        """Durchschnittliche Stufe-4-Laufzeit ueber alle Naechte der letzten
+
+        7 Tage (auch Naechte ohne Kuehlerfolg). Fruehindikator fuer
+        Automatisierungsprobleme, bevor sie sich im K-Wert zeigen.
+        """
+        return self._night_cooling.avg_active_minutes(7.0)
+
+    @property
+    def night_cooling_last_bypass_open_pct(self) -> float | None:
+        """% der aktiven Stufe-4-Zeit mit offenem Bypass im letzten Fenster.
+
+        Niedriger Wert trotz aktiver Stufe 4 zeigt eine Bypass-Stoerung auf,
+        die sonst unsichtbar bliebe -- der Fan lief, aber die Kuehlluft
+        wurde nicht durchgelassen.
+        """
+        return self._night_cooling.last_bypass_open_pct
+
+    @property
+    def night_cooling_last_avg_potential_k(self) -> float | None:
+        """Durchschnittliches thermisches Potenzial (T_ab - T_au) waehrend
+
+        der aktiven Kuehlzeit im letzten Fenster. Zeigt ob die Nacht ueberhaupt
+        fuer Kuehlung geeignet war, unabhaengig vom tatsaechlichen Ergebnis.
+        """
+        return self._night_cooling.last_avg_potential_k
 
     @property
     def heat_recovery_efficiency_pct(self) -> float | None:

@@ -5,6 +5,137 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.0.2] – 2026-06 (in Arbeit — weitere Ergänzungen folgen)
+
+### Neu: Filter-RPM-Drift-Diagnose (flex, Community-Beitrag)
+
+Auf Basis eines Hinweises von **Torsten600**: zunehmender Filterwiderstand
+zwingt die EC-Motoren bei gleicher Soll-Stufe zu höherer Drehzahl, um den
+Volumenstrom zu halten. Das ist ein früherer Indikator für Filterverstopfung
+als das feste zeitbasierte Filterintervall — relevant besonders in
+Umgebungen mit hoher Staub- oder Pollenlast.
+
+`filter_rpm_drift_pct` vergleicht die aktuelle RPM (bei Stufe 3) gegen die bei
+der Inbetriebnahme erfasste Referenz-RPM (Register 40519/40521). Da diese
+Referenz nur für Stufe 3 gilt, liefert der Sensor bei jeder anderen Stufe
+bewusst `None` statt eines irreführenden Wertes. `filter_rpm_drift_warning`
+feuert ab einer Abweichung von 8% (`FILTER_RPM_DRIFT_WARN_PCT`).
+
+Beide neuen Entities sind standardmäßig deaktiviert und nur für `profi-air
+flex/flat` Geräte verfügbar (Modbus-Protokoll).
+
+### Klarstellung: Modbus-Registeradressen für Fan-RPM bestätigt
+
+Im Rahmen der Community-Verifikation wurde ein gemeldeter Unterschied bei
+den Fan-RPM-Registern (Vorschlag: Offset 162/164) gegen die offizielle
+Fränkische-Modbus-XML-Dokumentation abgeglichen. Die Dokumentation bestätigt
+die bereits implementierten Offsets **100/102** — keine Code-Änderung an
+dieser Stelle. Die Diskrepanz wird mit dem Community-Mitwirkenden geklärt
+(möglicher Firmware-Versionsunterschied).
+
+### Tests (Stand dieser Ergänzung)
+
+7 neue Tests für `filter_rpm_drift_pct`/`filter_rpm_drift_warning`, inklusive
+des kritischen Edge-Cases "nur bei Stufe 3 gültig" und der A/B-Schalter-
+Zuordnung. Vollständige Suite: 460/460 Tests grün.
+
+### Neu: Filterverstopfungs-Verdacht (Touch + Flex, self-calibrating)
+
+Torstens Beobachtung (zunehmender Filterwiderstand → höhere RPM bei gleicher
+Stufe) ist nicht auf Modbus-Geräte mit Inbetriebnahme-Referenzregister
+beschränkt — das physikalische Prinzip gilt für jedes Gerät mit Volumenstrom-
+regelung. Die bereits vorhandene selbstkalibrierende RPM-Baseline pro
+Stufe+Saison deckte bisher nur die entgegengesetzte Richtung ab.
+
+**Bugfix:** `rpm_anomaly` dokumentierte eine Mindest-Stichprobengröße
+(`MIN_N_RPM=500`) vor der ersten Warnung, prüfte diese aber nirgends im Code
+— `WelfordEMA.z_score()` liefert bereits ab `n=2` einen Wert. Auf frischen
+Installationen konnte die Warnung dadurch voreilig und potenziell falsch
+feuern. Ein neues `_last_rpm_established`-Flag verfolgt jetzt korrekt, ob die
+für den letzten Z-Score verwendete Baseline tatsächlich `MIN_N_RPM` Samples
+erreicht hat.
+
+**Neu:** `filter_clogging_suspected` ergänzt `rpm_anomaly` um die fehlende
+Richtung (RPM signifikant *über* statt *unter* der Baseline). Beide nutzen
+dieselbe Stufe+Saison-Baseline, sind aber bewusst getrennte Entities, da
+unterschiedliche Ursache (Filter vs. Motor/Lager) und Handlungsempfehlung.
+Funktioniert identisch für Touch- und Flex-Geräte — im Gegensatz zum
+flex-spezifischen `filter_rpm_drift_pct` (fester Inbetriebnahme-Referenzwert,
+nur für Stufe 3 gültig) deckt diese Diagnose alle vier Stufen ab und passt
+sich automatisch an saisonale Luftdichteschwankungen an.
+
+7 neue Tests in `test_phase7_rpm_diagnostics.py`, davon 3 explizite
+Regressionstests für den `MIN_N_RPM`-Bug. Vollständige Suite: 467/467 Tests grün.
+
+---
+
+## [2.0.2] – 2026-06
+
+
+
+### Fix: Nachtkühlungs-Erfolgsmessung komplett überarbeitet
+
+**Bug:** Die session-basierte Erkennung (Stufe-4-Start bis Stufe-4-Ende)
+schloss eine Session bereits beim ersten Poll der `fan_at_level_4=False`
+zeigte. Da das Gerät nach ca. 2h intern auf eine niedrigere Stufe zurückfällt
+und die HA-Automation dies binnen 1–11 Sekunden korrigiert, konnte ein
+30s-Poll zufällig in dieses kurze Korrekturfenster fallen — die Nacht wurde
+dadurch in mehrere kleine Fragmente zerrissen, von denen keines die
+Mindestschwelle (0.5K) erreichte. Folge: `night_cooling_last_k` blieb
+wochenlang „Unbekannt" trotz tatsächlich wirksamer Nachtkühlung.
+
+**Fix:** `NightCoolingTracker` misst jetzt im festen Zeitfenster 22:00–07:00
+Uhr direkt die Netto-Temperaturdifferenz, unabhängig von der Anzahl
+zwischenzeitlicher kurzer Unterbrechungen.
+
+**Zusätzlicher Guard:** Eine Nacht wird nur dann als Kühlerfolg gewertet,
+wenn Stufe 4 im Fenster mindestens einmal aktiv war — reine natürliche
+nächtliche Abkühlung ohne jede Aktivität zählt nicht als Erfolg, egal wie
+groß das gemessene Delta ist.
+
+### Neu: Aktivitäts- und Bypass-Korrelation statt reinem Delta-K
+
+Der reine Temperaturabfall sagt nichts darüber aus, ob die Kühlstrategie
+tatsächlich wirksam war oder ob die Bypass-Klappe mitgespielt hat. Neue
+Metriken pro Nacht:
+
+- **Effizienz (K/h)** — trennt echten Kühlerfolg von langer Laufzeit mit
+  schwachem Ergebnis
+- **Bypass-Offen-Anteil** während der aktiven Kühlzeit — deckt eine
+  geschlossene oder pendelnde Bypass-Klappe auf, selbst wenn Stufe 4 lief
+- **Thermisches Potenzial** (Ø T_Abluft − T_Außenluft während aktiver
+  Kühlzeit) — zeigt ob die Nacht überhaupt geeignet war
+
+### Neu: Automations-Gesundheitsmetriken
+
+- `night_cooling_inactive_nights_7d` — Anzahl Nächte ohne jede Stufe-4-
+  Aktivität in den letzten 7 Tagen. Direkte Sichtbarkeit für genau das
+  Problem das den ursprünglichen Bug über Wochen verschleiert hat.
+- `night_cooling_7d_avg_active_minutes` — Trend der aktiven Laufzeit über
+  alle Nächte, auch ohne Kühlerfolg. Frühindikator für Automatisierungs-
+  probleme, bevor sie sich im K-Wert zeigen.
+
+### Sensor-Struktur überarbeitet
+
+Detailwerte zum letzten Ereignis (aktive Minuten, Bypass-Anteil, thermisches
+Potenzial) sind jetzt Attribute auf `night_cooling_last_k` statt eigene
+Sensoren — der Recorder führt für Attribute keine Langzeitstatistik, was für
+diese punktuellen Kontextwerte korrekt ist. Trend-relevante Werte
+(`night_cooling_7d_avg_k`, `night_cooling_7d_avg_efficiency`,
+`night_cooling_inactive_nights_7d`, `night_cooling_7d_avg_active_minutes`)
+bleiben eigene Sensoren mit voller Recorder-Historie.
+
+Alle neuen Sensoren sind standardmäßig deaktiviert (`entity_registry_enabled_default=False`).
+
+### Tests
+
+10 neue Tests in `test_phase6_night_cooling.py`, darunter ein expliziter
+Regressionstest der das beobachtete Rückfall-Muster (kurze Unterbrechungen
+durch Geräte/Automation-Korrekturzyklus) simuliert und verifiziert dass die
+Session dadurch nicht mehr fragmentiert wird. Vollständige Suite: 453/453 Tests grün.
+
+---
+
 ## [2.0.1] – 2026-06
 
 ### Neu: Lüftungsstufen-Steuerung für flex/flat

@@ -54,6 +54,7 @@ from .const import (
     FLEX_MODE_TEXT,
     FLEX_MODE_TO_END,
     FLEX_MODE_TO_WRITE,
+    FILTER_RPM_DRIFT_WARN_PCT,
     MODEL_DISPLAY,
     MODEL_PROFI_AIR_360_FLEX,
     UNIT_TYPE_TO_MODEL,
@@ -175,6 +176,9 @@ class KWLFlexData:
         hours_total: int | None,
         # Watt-Konfiguration
         watt_map: dict[int, float | None],
+        # Inbetriebnahme-Referenz-RPM bei Stufe 3 (für Filter-Drift-Diagnose)
+        ref_rpm_extract_s3: int | None = None,
+        ref_rpm_supply_s3: int | None = None,
     ) -> None:
         self._fan1_rpm        = fan1_rpm
         self._fan2_rpm        = fan2_rpm
@@ -202,6 +206,8 @@ class KWLFlexData:
         self.filter_total_days    = filter_total_days
         self.hours_total          = hours_total
         self._watt_map            = watt_map
+        self.ref_rpm_extract_s3   = ref_rpm_extract_s3
+        self.ref_rpm_supply_s3    = ref_rpm_supply_s3
 
     # ── Gemeinsame Properties (identisch zu KWLData) ─────────────────────────
 
@@ -355,6 +361,50 @@ class KWLFlexData:
         if rpm_ab > rpm_zu * 1.10:  # Abluft schneller als Zuluft → Richtungsumkehr
             return True
         return abs(rpm_zu - rpm_ab) / max(rpm_zu, rpm_ab) > 0.22
+
+    @property
+    def filter_rpm_drift_pct(self) -> float | None:
+        """RPM-Abweichung von der Inbetriebnahme-Referenz bei Stufe 3, in Prozent.
+
+        Community-Beitrag (Torsten600, Juni 2026): RPM-Drift bei gleicher Stufe
+        ist ein früherer Indikator für Filterverstopfung als das zeitbasierte
+        Filterintervall -- ein zunehmender Druckverlust durch staubige/pollen-
+        belastete Filter zwingt die EC-Motoren bei gleicher Soll-Drehzahl zu
+        höherer Drehzahl, um den Volumenstrom zu halten.
+
+        ref_rpm_extract_s3 / ref_rpm_supply_s3 (Register 40519/40521) wurden bei
+        der Inbetriebnahme NUR für Stufe 3 erfasst -- die Berechnung ist daher
+        nur bei aktueller Stufe 3 gültig. Bei anderen Stufen wird None
+        zurückgegeben statt eines irreführenden Wertes.
+
+        Positiver Wert = aktuelle RPM höher als Referenz (typisch bei
+        zunehmendem Filterwiderstand). Schwellenwert für eine Diagnose-Warnung
+        liegt bewusst nicht hier -- siehe FILTER_RPM_DRIFT_WARN_PCT.
+        """
+        if self.current_level != 3:
+            return None
+        ref_extract = self.ref_rpm_extract_s3
+        ref_supply = self.ref_rpm_supply_s3
+        rpm_ab = self.motor_abluft_rpm
+        rpm_zu = self.motor_zuluft_rpm
+        if not ref_extract or not ref_supply or rpm_ab is None or rpm_zu is None:
+            return None
+
+        drift_extract = (rpm_ab - ref_extract) / ref_extract * 100.0
+        drift_supply = (rpm_zu - ref_supply) / ref_supply * 100.0
+        # Konservativ: die größere der beiden Abweichungen melden
+        return round(max(drift_extract, drift_supply), 1)
+
+    @property
+    def filter_rpm_drift_warning(self) -> bool:
+        """True wenn die RPM-Drift bei Stufe 3 den Warnschwellenwert überschreitet.
+
+        Ergänzt die zeitbasierte Filterwarnung um einen belastungsabhängigen
+        Frühindikator -- relevant in Umgebungen mit hoher Staub-/Pollenlast,
+        wo das feste Zeitintervall zu spät warnen würde.
+        """
+        drift = self.filter_rpm_drift_pct
+        return drift is not None and drift >= FILTER_RPM_DRIFT_WARN_PCT
 
     @property
     def bypass_recommended(self) -> bool:
@@ -751,6 +801,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             filter_total_days=filter_total,
             hours_total=hours,
             watt_map=self.watt_map,
+            ref_rpm_extract_s3=caps.ref_rpm_extract_s3 if caps else None,
+            ref_rpm_supply_s3=caps.ref_rpm_supply_s3 if caps else None,
         )
 
     # ── Analytics + Repair Issues ──────────────────────────────────────────────

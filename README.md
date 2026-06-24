@@ -2,9 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
-[![Tests](https://img.shields.io/badge/Tests-417%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
+[![Tests](https://img.shields.io/badge/Tests-453%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.2-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
@@ -57,7 +57,7 @@ This integration adds that layer entirely within Home Assistant, with no cloud a
 | **Summer cooling** | Manual bypass toggle | Automatic night pre-cooling based on weather + indoor temperature |
 | **Energy tracking** | None | Cumulative kWh per level in HA Energy Dashboard |
 | **Power monitoring** | None | Continuous watt estimate from motor RPM — EC motor model P = P_base + k × (RPM/RPM_ref)³ |
-| **Self-learning** | None | Analytics engine: RPM baselines, efficiency baselines, bypass episode tracking, night cooling history |
+| **Self-learning** | None | Analytics engine: RPM baselines, efficiency baselines, bypass episode tracking, window-based night cooling tracking with efficiency and automation-health metrics |
 | **Maintenance alerts** | "F1" on display when filter is overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
 
 ### flex/flat (profi-air 250/360 flex, 180 flat) — additional
@@ -202,7 +202,17 @@ This model is significantly more accurate than a pure P ∝ n³ law, which would
 
 ### Night cooling result tracking
 
-`night_cooling_last_k` and `night_cooling_7d_avg_k` record the actual T_abluft drop (°C/K) per Stufe-4 cooling activation. From day one you can see whether your summer cooling automation is genuinely cooling the building and by how much per session.
+`night_cooling_last_k` measures the actual T_abluft drop (K) within the fixed 22:00–07:00 window, with `night_cooling_7d_avg_k` as the rolling weekly trend. The measurement is window-based rather than session-based — short device-internal reverts (the unit drops back from Stufe 4 after ~2h and the automation corrects within seconds) no longer fragment a single cooling night into multiple sub-threshold pieces.
+
+A night only counts as a cooling success if Stufe 4 was active at least once during the window — natural overnight cooling with zero fan activity never registers as a result, regardless of how much the temperature happened to drop on its own.
+
+Three additional metrics go beyond a raw delta:
+
+- **`night_cooling_7d_avg_efficiency`** (K/h) — separates genuine cooling effectiveness from long runtime with a weak result. A short, efficient night and a long, weak one can show the same delta; efficiency tells them apart.
+- **`night_cooling_inactive_nights_7d`** — count of nights in the last 7 days with zero Stufe-4 activity at all. Direct visibility into automation health, independent of weather or temperature outcome.
+- **`night_cooling_7d_avg_active_minutes`** — average active runtime across all nights, including inactive ones. An early warning for automation problems before they show up in the K-value.
+
+Detail values for the most recent event — active minutes, bypass-open percentage during the active window, and average thermal potential (T_abluft − T_aussenluft while cooling) — are exposed as attributes on `night_cooling_last_k` rather than separate sensors, since only the latest value matters for these and the Recorder does not track attribute history anyway.
 
 ### Maintenance alerts (Repair Issues)
 
@@ -327,8 +337,11 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 | `bypass_open_pct` | Day 1 | % time bypass open (cumulative) |
 | `bypass_avg_open_min` | Day 1 | Avg open episode duration (min) |
 | `bypass_transitions_1h` | Day 1 | Transitions in last 60 min |
-| `night_cooling_last_k` | Day 1 | Last cooling activation delta (K) |
-| `night_cooling_7d_avg_k` | Day 1 | 7-day average cooling delta (K) |
+| `night_cooling_last_k` | Day 1 | Last cooling result, 22:00–07:00 window (K). Attributes: active minutes, bypass-open %, thermal potential |
+| `night_cooling_7d_avg_k` | Day 1 | 7-day average cooling result (K) |
+| `night_cooling_7d_avg_efficiency` | Day 1 | 7-day average efficiency (K/h) |
+| `night_cooling_inactive_nights_7d` | Day 1 | Nights with zero Stufe-4 activity in last 7 days |
+| `night_cooling_7d_avg_active_minutes` | Day 1 | Average active runtime across all nights (incl. inactive) |
 | `rpm_ratio` | Week 1 | Current Zu/Ab RPM ratio |
 | `fan_law_max_deviation` | Week 1 | Max watt vs fan law deviation (%) |
 | `spi_stufe4` | Week 1 | Specific Power Input Stufe 4 (W/m³/h) |
@@ -515,6 +528,24 @@ Party mode activates Stufe 4 for a device-side timer. The fan entity correctly r
 ---
 
 ## Changelog
+
+### v2.0.2
+
+**Fix: night cooling success measurement rebuilt from session-based to window-based**
+The previous session detection (Stufe-4-start to Stufe-4-end) closed a session on the very first poll showing `fan_at_level_4=False`. Since the device internally reverts from Stufe 4 to a lower level after ~2h and the HA automation corrects this within 1–11 seconds, a 30s poll could occasionally land inside that brief correction window — fragmenting a full night of cooling into several sub-threshold pieces, none of which reached the 0.5K minimum. Result: `night_cooling_last_k` stayed "Unknown" for weeks despite cooling actually working.
+
+The tracker now measures the net temperature difference directly within a fixed 22:00–07:00 window, regardless of how many short interruptions occur within it.
+
+**New: activity guard**
+A night is only counted as a cooling success if Stufe 4 was active at least once during the window. Natural overnight cooling with zero fan activity no longer registers as a result.
+
+**New: efficiency and automation-health metrics**
+`night_cooling_7d_avg_efficiency` (K/h) separates genuine cooling effectiveness from long runtime with a weak result. `night_cooling_inactive_nights_7d` and `night_cooling_7d_avg_active_minutes` give direct visibility into automation health — exactly the kind of silent failure that caused the original bug to go unnoticed for weeks.
+
+**Sensor structure**
+Per-event detail values (active minutes, bypass-open %, thermal potential) moved to attributes on `night_cooling_last_k` rather than separate sensors — the Recorder does not track attribute history, which is correct here since only the latest value matters for these.
+
+10 new tests added, including an explicit regression test simulating the observed revert pattern. Full suite: 453/453 passing.
 
 ### v2.0.0
 

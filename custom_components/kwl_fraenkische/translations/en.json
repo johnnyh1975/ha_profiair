@@ -294,6 +294,9 @@
       },
       "preheater_active": {
         "name": "Pre-heater Active"
+      },
+      "filter_clogging_suspected": {
+        "name": "Filter clogging suspected"
       }
     },
     "number": {

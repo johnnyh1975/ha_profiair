@@ -155,6 +155,18 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
         value_fn=lambda d: bool(d.alarm_code),
         supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
+    KWLBinarySensorDescription(
+        key="filter_rpm_drift_warning",
+        name="Filter RPM-Drift Warnung",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:air-filter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # Community-Beitrag Torsten600 (Juni 2026): RPM-Drift bei Stufe 3 als
+        # Frühindikator für Filterverstopfung, unabhängig vom Zeitintervall.
+        value_fn=lambda d: d.filter_rpm_drift_warning,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
 )
 
 # ── Analytics-backed binary sensors ───────────────────────────────────────────
@@ -179,6 +191,18 @@ ANALYTICS_BINARY_SENSORS: tuple[KWLAnalyticsBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.rpm_anomaly if c.analytics else None,
+    ),
+    KWLAnalyticsBinarySensorDescription(
+        key="filter_clogging_suspected",
+        name="Filterverstopfung Verdacht",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:air-filter",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # Community-Beitrag Torsten600 (Juni 2026): RPM signifikant über der
+        # selbstkalibrierten Stufe+Saison-Baseline -- funktioniert identisch
+        # für Touch- und Flex-Geräte (keine protocol-Einschränkung nötig).
+        value_fn=lambda c: c.analytics.filter_clogging_suspected if c.analytics else None,
     ),
     KWLAnalyticsBinarySensorDescription(
         key="ratio_anomaly",

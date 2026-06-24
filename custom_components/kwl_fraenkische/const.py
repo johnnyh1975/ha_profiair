@@ -234,3 +234,8 @@ FLEX_LEVEL_RATIO: dict[int, float] = {
     3: 1.00,
     4: 1.00,  # Stufe 4 = Maximum; kein festes Verhältnis zu Stufe 3
 }
+
+# Schwellenwert für RPM-Drift-Filterwarnung (flex, Community-Beitrag Torsten600).
+# Bei Stufe 3 gemessene RPM-Abweichung von der Inbetriebnahme-Referenz, ab der
+# eine Diagnose-Warnung ausgelöst wird (zunehmender Filterwiderstand).
+FILTER_RPM_DRIFT_WARN_PCT: float = 8.0
