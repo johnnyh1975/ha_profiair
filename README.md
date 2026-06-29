@@ -4,7 +4,7 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
 [![Tests](https://img.shields.io/badge/Tests-453%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.0.2-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.3-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
