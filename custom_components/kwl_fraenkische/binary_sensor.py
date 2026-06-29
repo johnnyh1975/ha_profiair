@@ -185,7 +185,7 @@ ANALYTICS_BINARY_SENSORS: tuple[KWLAnalyticsBinarySensorDescription, ...] = (
     ),
     KWLAnalyticsBinarySensorDescription(
         key="rpm_anomaly",
-        name="Motor RPM Anomalie",
+        name="Drehzahl-Anomalie (Lagerverschleiß)",
         device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:fan-alert",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -206,7 +206,7 @@ ANALYTICS_BINARY_SENSORS: tuple[KWLAnalyticsBinarySensorDescription, ...] = (
     ),
     KWLAnalyticsBinarySensorDescription(
         key="ratio_anomaly",
-        name="Motor Asymmetrie Trend",
+        name="Drehzahlverhältnis-Anomalie",
         device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:fan-alert",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -215,7 +215,7 @@ ANALYTICS_BINARY_SENSORS: tuple[KWLAnalyticsBinarySensorDescription, ...] = (
     ),
     KWLAnalyticsBinarySensorDescription(
         key="eta_below_baseline",
-        name="WRG unter Referenzwert",
+        name="Wärmerückgewinnung unter Normal",
         device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:heat-wave",
         entity_category=EntityCategory.DIAGNOSTIC,

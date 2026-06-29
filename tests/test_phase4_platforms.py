@@ -108,12 +108,24 @@ class TestInitProtocolBranching:
 
 class TestSensorPlatform:
 
-    def test_night_cooling_sensors_disabled_by_default(self):
-        """Bug-Fix: night_cooling_* zeigt wochenlang 'Unbekannt' bis erstes
-        qualifizierendes Ereignis — muss daher standardmäßig deaktiviert sein."""
+    def test_night_cooling_core_sensors_enabled_by_default(self):
+        """UX-Roadmap 2.2: die zwei Kern-Trendwerte (letzter Kühlerfolg +
+        7-Tage-Schnitt) sind standardmäßig aktiv, da sie für jeden relevant
+        sind, der die Sommerkühlung nutzt."""
+        src = _src("sensor.py")
+        for key in ("night_cooling_last_k", "night_cooling_7d_avg_k"):
+            idx = src.find(f'key="{key}"')
+            assert idx >= 0, f"{key} nicht gefunden"
+            block = src[idx:idx + 600]
+            assert "entity_registry_enabled_default=False" not in block, (
+                f"{key} soll standardmäßig aktiv sein (Kern-Trendwert)"
+            )
+
+    def test_night_cooling_detail_sensors_disabled_by_default(self):
+        """Die spezielleren Diagnose-Metriken bleiben deaktiviert -- sie sind
+        für gezielte Fehlersuche relevant, nicht für den Alltag."""
         src = _src("sensor.py")
         for key in (
-            "night_cooling_last_k", "night_cooling_7d_avg_k",
             "night_cooling_7d_avg_efficiency",
             "night_cooling_inactive_nights_7d",
             "night_cooling_7d_avg_active_minutes",

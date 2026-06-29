@@ -34,6 +34,21 @@ def _ts(year, month, day, hour, minute=0, second=0) -> float:
     return time.mktime((year, month, day, hour, minute, second, 0, 0, -1))
 
 
+def _recent_night_window(days_ago: int) -> tuple[float, float]:
+    """Liefert (22:00-Start, 07:00-Ende) eines Nachtfensters, das `days_ago`
+    Tage vor jetzt liegt.
+
+    Wird für Tests von inactive_nights()/avg_active_minutes() benötigt, die
+    relativ zu time.time() über ein 7-Tage-Fenster filtern -- feste
+    Kalenderdaten würden brechen, sobald sie älter als 7 Tage sind.
+    """
+    now = time.localtime()
+    base = time.mktime(
+        (now.tm_year, now.tm_mon, now.tm_mday, 22, 0, 0, 0, 0, -1)
+    ) - days_ago * 86400.0
+    return base, base + 9 * 3600.0  # 22:00 → 07:00 nächster Tag
+
+
 class TestNightCoolingWindowBasic:
     """Grundfunktion: ein durchgehendes Fenster mit klarem Delta wird erfasst."""
 
@@ -76,13 +91,13 @@ class TestNightCoolingWindowBasic:
         Nachtabkuehlung (Stufe 4 nie gesetzt), darf das NICHT als
         Nachtkuehlungs-Erfolg gewertet werden -- unabhaengig vom Delta."""
         tracker = NightCoolingTracker()
-        t = _ts(2026, 6, 22, 22, 0)
+        start, end = _recent_night_window(days_ago=1)
+        t = start
         tracker.update(False, 26.0, 19.0, True, t, 1800.0)  # Stufe 4 NIE aktiv
         for _ in range(8):
             t += 1800.0
             tracker.update(False, 26.0 - 0.3, 19.0, True, t, 1800.0)
-        t = _ts(2026, 6, 23, 7, 0)
-        tracker.update(False, 23.6, 17.0, True, t, 1800.0)  # 2.4K natuerlicher Abfall
+        tracker.update(False, 23.6, 17.0, True, end, 1800.0)  # 2.4K natuerlicher Abfall
 
         assert tracker.last_event_k is None, (
             "Eine Nacht ohne jede Stufe-4-Aktivitaet darf nicht als "
@@ -94,20 +109,19 @@ class TestNightCoolingWindowBasic:
     def test_inactive_night_counted_separately_from_active_night(self):
         tracker = NightCoolingTracker()
 
-        # Nacht 1: komplett inaktiv
-        t = _ts(2026, 6, 20, 22, 0)
-        tracker.update(False, 26.0, 19.0, True, t, 1800.0)
-        t = _ts(2026, 6, 21, 7, 0)
-        tracker.update(False, 24.0, 17.0, True, t, 1800.0)
+        # Nacht 1: komplett inaktiv (vor 3 Tagen, innerhalb des 7-Tage-Fensters)
+        start1, end1 = _recent_night_window(days_ago=3)
+        tracker.update(False, 26.0, 19.0, True, start1, 1800.0)
+        tracker.update(False, 24.0, 17.0, True, end1, 1800.0)
 
-        # Nacht 2: aktiv mit klarem Erfolg
-        t = _ts(2026, 6, 21, 22, 0)
+        # Nacht 2: aktiv mit klarem Erfolg (vor 2 Tagen)
+        start2, end2 = _recent_night_window(days_ago=2)
+        t = start2
         tracker.update(True, 26.0, 18.0, True, t, 1800.0)
         for _ in range(4):
             t += 1800.0
             tracker.update(True, 25.0, 18.0, True, t, 1800.0)
-        t = _ts(2026, 6, 22, 7, 0)
-        tracker.update(False, 24.0, 17.0, True, t, 1800.0)
+        tracker.update(False, 24.0, 17.0, True, end2, 1800.0)
 
         assert tracker.inactive_nights(7.0) == 1
         assert tracker.last_event_k is not None  # Nacht 2 zaehlt als Erfolg

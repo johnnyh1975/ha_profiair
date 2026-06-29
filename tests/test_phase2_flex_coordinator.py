@@ -667,3 +667,73 @@ class TestWriteUint32Logic:
     def test_write_filter_days_30(self):
         """Filter-Intervall 30 Tage (Minimum) → [30, 0]."""
         assert self._encode(30) == [30, 0]
+
+
+class TestRegisterLengthHardening:
+    """Härtung (Code-Review v2.0.2): Modbus-Reads müssen die Registeranzahl
+    prüfen, nicht nur isError(). Eine zu kurze Registerliste ohne isError()=True
+    würde sonst später in _build_data zu einem struct.error/IndexError außerhalb
+    der Fehlerbehandlung führen und den gesamten Poll-Zyklus abbrechen.
+    """
+
+    def _method_source(self, method_name: str) -> str:
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        tree = ast.parse(source)
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef) and cls.name == "KWLFlexCoordinator":
+                for item in cls.body:
+                    if isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef)) and item.name == method_name:
+                        lines = source.splitlines()
+                        return "\n".join(lines[item.lineno - 1:item.end_lineno])
+        return ""
+
+    def test_fast_read_checks_register_length(self):
+        """_read_all_registers muss len(result.registers) gegen count prüfen."""
+        src = self._method_source("_read_all_registers")
+        assert "len(result.registers)" in src, (
+            "Fast-Block-Read prüft die Registeranzahl nicht -- "
+            "kurze Listen würden ungefangen in _build_data crashen"
+        )
+        assert "!= count" in src
+
+    def test_setup_read_checks_register_length(self):
+        """_read_capabilities muss len(result.registers) gegen count prüfen."""
+        src = self._method_source("_read_capabilities")
+        assert "len(result.registers)" in src, (
+            "Setup-Read prüft die Registeranzahl nicht -- ein kurzer Read "
+            "würde die harten raw['s_*']-Zugriffe crashen lassen"
+        )
+        assert "!= count" in src
+
+    def test_slow_read_checks_register_length(self):
+        """Slow-Block-Read muss ebenfalls die Länge prüfen (verwirft sonst
+        Cache-Update bei Teil-Reads)."""
+        src = self._method_source("_read_all_registers")
+        # Der Slow-Zweig kombiniert isError() und Längenprüfung
+        assert "isError() or len(result.registers) != count" in src
+
+
+class TestTimeSyncFailureThrottle:
+    """Härtung (Code-Review v2.0.2): wiederholt fehlschlagende Zeitsync darf
+    das Log nicht fluten -- erste Warnung sichtbar, danach debug."""
+
+    def _method_source(self, method_name: str) -> str:
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        tree = ast.parse(source)
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef) and cls.name == "KWLFlexCoordinator":
+                for item in cls.body:
+                    if isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef)) and item.name == method_name:
+                        lines = source.splitlines()
+                        return "\n".join(lines[item.lineno - 1:item.end_lineno])
+        return ""
+
+    def test_time_sync_throttles_repeated_failures(self):
+        src = self._method_source("_async_sync_time")
+        assert "_time_sync_failures" in src
+        # Erste Warnung auf warning-Level, Folgefehler auf debug
+        assert "== 1" in src
+        assert "_LOGGER.warning" in src
+        assert "_LOGGER.debug" in src

@@ -303,6 +303,26 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 
 ## All entities
 
+> **New here? Which entities should I enable?**
+> The integration ships ~36 diagnostic entities disabled by default to avoid
+> overwhelming the entity list. Here's what's worth enabling, and when:
+>
+> | Enable this | When | Why |
+> |---|---|---|
+> | `energy_total` | Right away | One entry for the HA Energy Dashboard instead of four per-level sensors |
+> | `night_cooling_last_k` + `night_cooling_7d_avg_k` | If you use summer night cooling | See whether cooling actually works and by how much |
+> | `night_cooling_inactive_nights_7d` | If you use summer night cooling | Catches a silently broken automation early |
+> | `filter_clogging_suspected` | After ~2–4 weeks | Self-calibrating clog warning, ahead of the time-based interval |
+> | `rpm_anomaly`, `motor_asymmetry_trend` | After ~2–4 weeks | Early bearing-wear detection once baselines mature |
+> | `bypass_pendeln` | Right away | Actuator-wear warning, no baseline needed |
+> | `filter_rpm_drift_pct` | flex/flat only, right away | Filter clog indicator from commissioning reference RPM |
+> | `eps_exhaust`, `energy_balance_ratio`, `wrg_unter_referenzwert` | First winter | Only meaningful once heating-season baselines exist |
+> | `analytics_maturity` | Right away | Shows how far the self-learning baselines have progressed (enable the others once this is past ~30%) |
+>
+> Everything not listed here is fine to leave disabled unless you have a
+> specific reason — the digital-input and per-event detail entities only
+> matter for special hardware or are exposed as attributes elsewhere.
+
 ### Sensors — always active
 
 | Key | Description |
@@ -323,6 +343,7 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 | `heat_recovery_watts` | Recovered heat estimate (W) — RPM-based |
 | `power_current` | Real-time power from RPM (W) |
 | `energy_level_1` through `_4` | Cumulative energy per level (kWh) |
+| `energy_total` | Cumulative energy across all levels (kWh) — for the Energy Dashboard |
 | `hours_level_1` through `_4` | Operating hours per level (h) |
 | `hours_frost` | Frost protection hours (h) |
 | `filter_total_days` | Filter total interval (days) |
@@ -372,14 +393,82 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 
 | Entity | Description |
 |---|---|
-| `fan.kwl_fraenkische_rohrwerke` | Fan level 1–4 |
-| `select.bypass_steuerung` | Automatisch / Manuell offen / Manuell zu |
-| `number.bypass_schwelle_aussenluft` | Bypass Auto threshold — outdoor (°C) |
-| `number.bypass_schwelle_abluft` | Bypass Auto threshold — extract (°C) |
-| `number.kalibrierung_*` | Temperature sensor offsets |
-| `number.party_timer_nachlauf` | Party mode duration |
-| `button.filterfehler_bestatigen` | Confirm filter replacement on device |
-| `button.analytics_baselines_zurucksetzen` | Reset all learned baselines |
+| `fan.profi_air_400_fan` | Fan level 1–4 |
+| `select.profi_air_400_bypass_select` | Automatisch / Manuell offen / Manuell zu |
+| `number.profi_air_400_bypass_schwelle_aussenluft` | Bypass Auto threshold — outdoor (°C) |
+| `number.profi_air_400_bypass_schwelle_abluft` | Bypass Auto threshold — extract (°C) |
+| `number.profi_air_400_kalibrierung_*` | Temperature sensor offsets |
+| `number.profi_air_400_party_timer_nachlauf` | Party mode duration |
+| `button.profi_air_400_filterfehler_bestaetigen` | Confirm filter replacement on device |
+| `button.profi_air_400_analytics_baselines_zuruecksetzen` | Reset all learned baselines |
+
+> Entity IDs follow the `{model_slug}_{key}` scheme — for a 250 touch they read
+> `fan.profi_air_250_fan` etc. Your actual IDs may differ if the entities were
+> first registered under an older naming scheme; check **Settings → Devices →
+> profi-air** for the exact IDs on your system.
+
+## Example dashboard
+
+A starting-point Lovelace dashboard. Paste into a new manual dashboard
+(**Settings → Dashboards → Add → Edit → Raw configuration editor**) and adjust
+the entity IDs to match your model slug.
+
+```yaml
+title: KWL
+views:
+  - title: Lüftung
+    cards:
+      - type: entities
+        title: Steuerung
+        entities:
+          - entity: fan.profi_air_400_fan
+          - entity: select.profi_air_400_bypass_select
+          - entity: sensor.profi_air_400_current_level_text
+            name: Aktuelle Stufe
+          - entity: sensor.profi_air_400_party_timer
+            name: Party-Timer
+
+      - type: entities
+        title: Temperaturen
+        entities:
+          - entity: sensor.profi_air_400_temp_abluft
+            name: Abluft
+          - entity: sensor.profi_air_400_temp_zuluft
+            name: Zuluft
+          - entity: sensor.profi_air_400_temp_aussenluft
+            name: Außenluft
+          - entity: sensor.profi_air_400_temp_fortluft
+            name: Fortluft
+
+      - type: history-graph
+        title: Temperaturverlauf
+        hours_to_show: 24
+        entities:
+          - sensor.profi_air_400_temp_abluft
+          - sensor.profi_air_400_temp_aussenluft
+
+      - type: entities
+        title: Energie & Wartung
+        entities:
+          - entity: sensor.profi_air_400_power_current
+            name: Aktuelle Leistung
+          - entity: sensor.profi_air_400_energy_total
+            name: Energie gesamt
+          - entity: sensor.profi_air_400_filter_residual_days
+            name: Filter Restlaufzeit
+          - entity: binary_sensor.profi_air_400_filter_ok
+            name: Filterstatus
+
+      - type: entities
+        title: Nachtkühlung (Analyse — Entitäten ggf. erst aktivieren)
+        entities:
+          - entity: sensor.profi_air_400_night_cooling_last_k
+            name: Letzter Kühlerfolg
+          - entity: sensor.profi_air_400_night_cooling_7d_avg_k
+            name: Ø 7 Tage
+          - entity: sensor.profi_air_400_night_cooling_inactive_nights_7d
+            name: Inaktive Nächte (7 Tage)
+```
 
 ---
 

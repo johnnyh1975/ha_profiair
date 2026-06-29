@@ -65,6 +65,26 @@ def _energy_kwh(hours: int | None, watt: float) -> float | None:
     return round(hours * watt / 1000, 2)
 
 
+def _energy_total_kwh(d: Any) -> float | None:
+    """Summe des kumulativen Energieverbrauchs über alle vier Stufen.
+
+    Für die Einbindung ins HA Energy Dashboard als ein einziger Eintrag,
+    statt vier separate energy_level_X-Sensoren manuell addieren zu müssen.
+    Liefert die Summe aller Stufen mit gültigem Stundenwert; None nur, wenn
+    keine einzige Stufe Daten hat.
+    """
+    parts = [
+        _energy_kwh(d.hours_level_1, LEVEL_TO_WATT[1]),
+        _energy_kwh(d.hours_level_2, LEVEL_TO_WATT[2]),
+        _energy_kwh(d.hours_level_3, LEVEL_TO_WATT[3]),
+        _energy_kwh(d.hours_level_4, LEVEL_TO_WATT[4]),
+    ]
+    valid = [p for p in parts if p is not None]
+    if not valid:
+        return None
+    return round(sum(valid), 2)
+
+
 SENSORS: tuple[KWLSensorDescription, ...] = (
 
     # ------------------------------------------------------------------
@@ -118,6 +138,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     # ------------------------------------------------------------------
     KWLSensorDescription(
         key="motor_zuluft_rpm",
+        icon="mdi:fan",
         entity_category=EntityCategory.DIAGNOSTIC,
         required_tag="MoStZlUm",
         name="Zuluft Motor U/min",
@@ -129,6 +150,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
     KWLSensorDescription(
         key="motor_abluft_rpm",
+        icon="mdi:fan",
         entity_category=EntityCategory.DIAGNOSTIC,
         required_tag="MoStAlUm",
         name="Abluft Motor U/min",
@@ -218,6 +240,19 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
         value_fn=lambda d: _energy_kwh(d.hours_level_4, LEVEL_TO_WATT[4]),
+        supported_protocols=frozenset({PROTOCOL_HTTP}),
+    ),
+    KWLSensorDescription(
+        key="energy_total",
+        name="Energie gesamt",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        icon="mdi:lightning-bolt",
+        # Summe aller vier Stufen -- für das HA Energy Dashboard als ein
+        # einziger Eintrag statt vier separater energy_level_X-Sensoren.
+        value_fn=_energy_total_kwh,
         supported_protocols=frozenset({PROTOCOL_HTTP}),
     ),
 
@@ -353,6 +388,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     # ------------------------------------------------------------------
     KWLSensorDescription(
         key="current_level_text",
+        icon="mdi:fan",
         name="Aktuelle Stufe",
         value_fn=lambda d: d.current_level_text,
         supported_protocols=frozenset({PROTOCOL_HTTP}),
@@ -367,11 +403,13 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
     KWLSensorDescription(
         key="bypass_status",
+        icon="mdi:valve",
         name="Bypass Status",
         value_fn=lambda d: d.bypass_status,
     ),
     KWLSensorDescription(
         key="system_message",
+        icon="mdi:information-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         name="Systemmeldung",
         value_fn=lambda d: d.system_message,
@@ -396,6 +434,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
     KWLSensorDescription(
         key="preheater_duty_pct",
+        icon="mdi:heating-coil",
         name="Vorheizregister Auslastung",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="%",
@@ -473,6 +512,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     KWLSensorDescription(
         key="motor_abluft_rpm_flex",
         name="Abluft-Ventilator RPM",
+        icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -482,6 +522,7 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     KWLSensorDescription(
         key="motor_zuluft_rpm_flex",
         name="Zuluft-Ventilator RPM",
+        icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -556,7 +597,6 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         suggested_display_precision=1,
         icon="mdi:weather-night",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_last_k if c.analytics else None,
         # Detailwerte zum letzten Ereignis als Attribute statt eigene Sensoren --
         # der Recorder fuehrt fuer Attribute keine Langzeitstatistik, aber fuer
@@ -575,7 +615,6 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
         suggested_display_precision=1,
         icon="mdi:weather-night",
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         value_fn=lambda c: c.analytics.night_cooling_7d_avg_k if c.analytics else None,
     ),
     KWLAnalyticsSensorDescription(
@@ -613,7 +652,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     # HRE analytics
     KWLAnalyticsSensorDescription(
         key="eps_exhaust",
-        name="WRG Abluftseite",
+        name="Wärmerückgewinnung Abluftseite",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="%",
         suggested_display_precision=1,
@@ -624,7 +663,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     ),
     KWLAnalyticsSensorDescription(
         key="energy_balance_ratio",
-        name="Energiebilanz-Verhaeltnis",
+        name="Energiebilanz (Plausibilitätscheck)",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="",
         suggested_display_precision=3,
@@ -636,7 +675,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     # RPM analytics
     KWLAnalyticsSensorDescription(
         key="rpm_ratio",
-        name="Motor RPM Verhaeltnis",
+        name="Drehzahlverhältnis Zu-/Abluft",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="",
         suggested_display_precision=4,
@@ -648,7 +687,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     # Analytics maturity
     KWLAnalyticsSensorDescription(
         key="analytics_maturity",
-        name="Analytics Reifegrad",
+        name="Selbstlernen Fortschritt",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="%",
         suggested_display_precision=0,
@@ -660,7 +699,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     # Season
     KWLAnalyticsSensorDescription(
         key="analytics_season",
-        name="Analytics Saison",
+        name="Erkannte Jahreszeit",
         icon="mdi:calendar-month",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -685,7 +724,7 @@ ANALYTICS_SENSORS: tuple[KWLAnalyticsSensorDescription, ...] = (
     # SPI reference sensor (Stufe 4 — the most meaningful for cross-comparison)
     KWLAnalyticsSensorDescription(
         key="spi_stufe4",
-        name="Spezifischer Leistungseintrag Stufe 4",
+        name="Leistung pro Luftmenge (Stufe 4)",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="W/(m³/h)",
         suggested_display_precision=4,

@@ -24,9 +24,11 @@ async def async_get_config_entry_diagnostics(
     protocol = entry.data.get(CONF_PROTOCOL, "http")
 
     config_data = dict(entry.data)
-    config_data["password"] = REDACTED
-    if "mac" in config_data:
-        config_data["mac"] = REDACTED
+    # Nur vorhandene Secrets schwärzen -- ein read-only Touch-Setup hat z.B.
+    # gar kein Passwort, dann darf auch kein REDACTED-Key erscheinen.
+    for secret_key in ("password", "username", "mac"):
+        if secret_key in config_data:
+            config_data[secret_key] = REDACTED
 
     data = coordinator.data
     base = {

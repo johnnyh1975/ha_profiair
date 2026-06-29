@@ -478,8 +478,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             "maintenance_next_threshold", float(ANNUAL_MAINTENANCE_HOURS)
         )
 
-        # Zeit-Sync-Subscription
-        self._unsub_time_sync = None
+        # Zähler für gedrosseltes Logging fehlgeschlagener Zeitsynchronisation
+        self._time_sync_failures = 0
 
         # DeviceInfo wird nach erstem Setup-Read befüllt
         self.device_info: DeviceInfo = DeviceInfo(
@@ -518,18 +518,24 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             )
         )
 
-        # Initiale Zeitsynchronisation + geplante Wiederholung
+        # Initiale Zeitsynchronisation + geplante Wiederholung.
+        # Cleanup einheitlich über async_on_unload (wie der Analytics-Timer),
+        # damit nicht zwei verschiedene Teardown-Mechanismen parallel laufen.
         await self._async_sync_time()
-        self._unsub_time_sync = async_track_time_interval(
-            self.hass,
-            self._async_sync_time_callback,
-            TIME_SYNC_INTERVAL,
+        self.config_entry.async_on_unload(
+            async_track_time_interval(
+                self.hass,
+                self._async_sync_time_callback,
+                TIME_SYNC_INTERVAL,
+            )
         )
 
     def async_teardown(self) -> None:
-        """Freigabe von Ressourcen beim Entladen des Entries."""
-        if self._unsub_time_sync is not None:
-            self._unsub_time_sync()
+        """Freigabe von Ressourcen beim Entladen des Entries.
+
+        Timer werden über async_on_unload automatisch abgemeldet -- hier nur
+        noch die Modbus-Verbindung schließen.
+        """
         if self._client.connected:
             self._client.close()
 
@@ -592,6 +598,14 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             )
             if result.isError():
                 raise UpdateFailed(f"Setup-Read offset={offset} fehlgeschlagen")
+            # Härtung: kurze Registerliste ohne isError() würde unten zu einem
+            # IndexError/struct.error führen -- hier sauber als UpdateFailed
+            # behandeln, damit HA das Setup korrekt erneut versucht.
+            if len(result.registers) != count:
+                raise UpdateFailed(
+                    f"Setup-Read offset={offset}: erwartet {count} Register, "
+                    f"erhalten {len(result.registers)}"
+                )
             raw[f"s_{offset}"] = list(result.registers)
 
         u32 = self._decode_uint32
@@ -640,14 +654,15 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             ref_rpm_supply_s3=ref_rpm_supply,
         )
 
-        # DeviceInfo mit bekannter MAC + Firmware aktualisieren
+        # DeviceInfo mit bekannter MAC + Firmware aktualisieren.
+        # Kein configuration_url: flex/flat-Geräte haben kein Web-Interface,
+        # ein "modbus://"-Link wäre im Geräte-Dialog nicht öffnenbar (toter Link).
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, mac_id)},
             name=model_name,
             manufacturer="Fränkische Rohrwerke",
             model=model_name,
             sw_version=fw_str,
-            configuration_url=f"modbus://{self._host}:{self._port}",
         )
 
         switch_pos = "B" if fan1_is_extract else "A"
@@ -669,6 +684,15 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             )
             if result.isError():
                 raise ModbusIOException(f"Read offset={offset} count={count} fehlgeschlagen")
+            # Härtung: manche pymodbus-Transportfehler liefern eine zu kurze
+            # Registerliste OHNE isError()=True. Ungeprüft würde das später in
+            # _build_data zu einem struct.error/IndexError außerhalb der
+            # Fehlerbehandlung führen und den gesamten Poll-Zyklus abbrechen.
+            if len(result.registers) != count:
+                raise ModbusIOException(
+                    f"Read offset={offset}: erwartet {count} Register, "
+                    f"erhalten {len(result.registers)}"
+                )
             raw[f"f_{offset}"] = list(result.registers)
 
         # Slow-Blocks (jeder 10. Poll oder beim ersten Poll)
@@ -678,9 +702,10 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 result = await self._client.read_holding_registers(
                     address=offset, count=count, device_id=1
                 )
-                if result.isError():
+                if result.isError() or len(result.registers) != count:
                     _LOGGER.warning(
-                        "Slow-Block offset=%d nicht lesbar – verwende Cache", offset
+                        "Slow-Block offset=%d nicht (vollständig) lesbar – verwende Cache",
+                        offset,
                     )
                 else:
                     slow[f"sl_{offset}"] = list(result.registers)
@@ -970,9 +995,24 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 if not self._client.connected:
                     return
                 await self._write_uint32(110, int(_time.time()))  # offset 110 = 40111
+            if self._time_sync_failures:
+                _LOGGER.info(
+                    "KWL Flex: Zeitsynchronisation wieder erfolgreich nach %d Fehlversuchen",
+                    self._time_sync_failures,
+                )
+            self._time_sync_failures = 0
             _LOGGER.debug("KWL Flex: Zeitsynchronisation durchgeführt")
         except Exception as err:
-            _LOGGER.warning("KWL Flex: Zeitsynchronisation fehlgeschlagen: %s", err)
+            # Erste Warnung sichtbar, danach auf debug drosseln -- sonst flutet
+            # ein dauerhaft nicht erreichbares Gerät das Log im Sync-Intervall.
+            self._time_sync_failures += 1
+            if self._time_sync_failures == 1:
+                _LOGGER.warning("KWL Flex: Zeitsynchronisation fehlgeschlagen: %s", err)
+            else:
+                _LOGGER.debug(
+                    "KWL Flex: Zeitsynchronisation weiterhin fehlgeschlagen (#%d): %s",
+                    self._time_sync_failures, err,
+                )
 
     async def _async_sync_time_callback(self, _now: Any = None) -> None:
         await self._async_sync_time()

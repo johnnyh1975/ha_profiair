@@ -183,25 +183,25 @@
         "name": "Night cooling 7-day average"
       },
       "eps_exhaust": {
-        "name": "Heat recovery exhaust side"
+        "name": "Heat recovery (exhaust side)"
       },
       "energy_balance_ratio": {
-        "name": "Energy balance ratio"
+        "name": "Energy balance (plausibility check)"
       },
       "rpm_ratio": {
-        "name": "Motor RPM ratio"
+        "name": "Fan speed ratio supply/extract"
       },
       "analytics_maturity": {
-        "name": "Analytics maturity"
+        "name": "Self-learning progress"
       },
       "analytics_season": {
-        "name": "Analytics season"
+        "name": "Detected season"
       },
       "fan_law_max_deviation": {
-        "name": "Fan law max deviation"
+        "name": "Power model deviation (max)"
       },
       "spi_stufe4": {
-        "name": "Specific power input Stufe 4"
+        "name": "Power per airflow (level 4)"
       },
       "current_mode_text": {
         "name": "Operating Mode"
@@ -238,6 +238,9 @@
       },
       "motor_zuluft_rpm_flex": {
         "name": "Supply Fan RPM"
+      },
+      "energy_total": {
+        "name": "Total energy"
       }
     },
     "binary_sensor": {
@@ -278,16 +281,16 @@
         "name": "Bypass hunting"
       },
       "rpm_anomaly": {
-        "name": "Motor RPM anomaly"
+        "name": "Fan speed anomaly (bearing wear)"
       },
       "ratio_anomaly": {
-        "name": "Motor asymmetry trend"
+        "name": "Fan speed ratio anomaly"
       },
       "eta_below_baseline": {
-        "name": "Heat recovery below baseline"
+        "name": "Heat recovery below normal"
       },
       "fan_law_anomaly": {
-        "name": "Fan law anomaly"
+        "name": "Power model anomaly"
       },
       "alarm_active": {
         "name": "Alarm Active"

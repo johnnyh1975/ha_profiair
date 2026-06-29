@@ -652,7 +652,7 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         self.device_info = DeviceInfo(
             identifiers={(DOMAIN, self._mac_id)},
             name=model_display,
-            manufacturer="Fraenkische Rohrwerke",
+            manufacturer="Fränkische Rohrwerke",
             model=model_display,
             sw_version=None,
             configuration_url=f"http://{host}",

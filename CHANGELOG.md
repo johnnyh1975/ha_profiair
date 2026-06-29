@@ -5,7 +5,80 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
-## [2.0.2] – 2026-06 (in Arbeit — weitere Ergänzungen folgen)
+## [2.0.3] – 2026-06
+
+### UX-Verbesserungen (systematisches UX-Review)
+
+- **Nachtkühlungs-Kernwerte standardmäßig aktiv.** `night_cooling_last_k`
+  (letzter Kühlerfolg) und `night_cooling_7d_avg_k` (7-Tage-Schnitt) sind jetzt
+  standardmäßig sichtbar -- sie sind für jeden relevant, der die Sommerkühlung
+  nutzt. Die drei spezielleren Diagnose-Metriken (Effizienz, inaktive Nächte,
+  aktive Minuten) bleiben für die gezielte Fehlersuche deaktiviert.
+- **Verständlichere Friendly Names** für 11 Diagnose-Entitäten. Fachbegriffe
+  wie „WRG Abluftseite", „Analytics Reifegrad", „Spezifischer Leistungseintrag
+  Stufe 4", „Fanlaufgesetz-Abweichung" wurden durch selbsterklärende Namen
+  ersetzt (z.B. „Wärmerückgewinnung Abluftseite", „Selbstlernen Fortschritt",
+  „Leistung pro Luftmenge (Stufe 4)", „Leistungsmodell-Anomalie"). Die
+  Entity-IDs bleiben unverändert -- nur der angezeigte Name ändert sich, keine
+  Automation bricht.
+- **Neuer Gesamt-Energiesensor `energy_total`.** Summe des kumulativen
+  Verbrauchs über alle vier Stufen -- für das HA Energy Dashboard als ein
+  einziger Eintrag, statt vier `energy_level_X`-Sensoren manuell addieren zu
+  müssen. Toleriert fehlende Einzelstufen (Summe der vorhandenen).
+- **README: Orientierungstabelle "Welche Entität wann aktivieren".** Die ~36
+  standardmäßig deaktivierten Diagnose-Entitäten haben jetzt eine klare
+  Empfehlung, welche für welchen Anwendungsfall sinnvoll sind.
+- **README: Beispiel-Dashboard** zum Kopieren (Steuerung, Temperaturen,
+  Energie/Wartung, Nachtkühlung).
+- **README: veraltete Entity-IDs korrigiert** -- die Controls-Tabelle nannte
+  noch das alte `kwl_fraenkische_rohrwerke`-Schema statt `{model_slug}_{key}`.
+- **Fehlende Icons ergänzt** für 8 Sensoren (Ventilator-RPM, Bypass-Status,
+  Systemmeldung, Vorheizregister), die zuvor das generische Standard-Icon
+  hatten.
+- **Toter Geräte-Link entfernt.** Flex/flat setzte `configuration_url` auf
+  `modbus://...` -- kein vom Browser öffenbares Schema. Da flex-Geräte kein
+  Web-Interface haben, wird die URL jetzt weggelassen statt einen toten
+  "Besuchen"-Link anzubieten.
+- **Herstellername vereinheitlicht** ("Fränkische Rohrwerke" mit Umlaut, war
+  beim touch-Coordinator ohne).
+
+6 neue Tests für `energy_total` (inkl. None-Toleranz und realer Gerätewerte).
+Vollständige Suite: 478/478 Tests grün.
+
+### Code-Review-Härtung (systematisches Review)
+
+Ein systematisches Code-Review deckte mehrere Robustheitslücken auf, primär
+im Modbus-Pfad der flex/flat-Geräte:
+
+- **Modbus-Registerlängen werden jetzt geprüft.** `_read_all_registers` und
+  `_read_capabilities` validierten bislang nur `result.isError()`, nicht die
+  tatsächliche Anzahl zurückgegebener Register. Manche pymodbus-Transport-
+  fehler liefern eine zu kurze Registerliste *ohne* `isError()=True` — das
+  hätte später beim Dekodieren zu einem ungefangenen `struct.error`/
+  `IndexError` außerhalb der Fehlerbehandlung geführt und den Poll-Zyklus
+  (bzw. das Setup) abstürzen lassen. Jetzt wird die Länge gegen `count`
+  geprüft und sauber als `ModbusIOException` bzw. `UpdateFailed` behandelt.
+- **Setup-Read abgesichert.** Die sechs harten `raw["s_*"]`-Zugriffe in
+  `_read_capabilities` (System-ID, Firmware, MAC, A/B-Schalter, Referenz-RPM)
+  sind durch die neue Längenprüfung garantiert sicher — ein Teil-Read führt
+  jetzt zu einem sauberen Setup-Retry statt zu einem `KeyError`.
+- **Timer-Cleanup vereinheitlicht.** Der Zeitsync-Timer wurde bisher manuell
+  in `async_teardown` abgemeldet, der Analytics-Save-Timer über
+  `async_on_unload`. Beide laufen jetzt über `async_on_unload` — ein
+  einheitlicher Mechanismus, kein Risiko vergessener Abmeldungen.
+- **Zeitsync-Logging gedrosselt.** Ein dauerhaft nicht erreichbares Gerät
+  flutete bisher das Log mit einer Warnung pro Sync-Intervall. Jetzt: erste
+  Warnung sichtbar, Folgefehler auf `debug`, plus eine Info-Meldung bei
+  Wiederherstellung.
+- **Diagnostics-Redaction gehärtet.** `username` wird jetzt ebenfalls
+  geschwärzt, und für read-only-Touch-Setups ohne Passwort erscheint kein
+  irreführender `REDACTED`-Eintrag mehr.
+
+**Bugfix:** Die Tests für `inactive_nights()`/`avg_active_minutes()`
+verwendeten feste Kalenderdaten, die aus dem rollenden 7-Tage-Fenster fielen,
+sobald sie älter als 7 Tage waren. Auf relative Zeitstempel umgestellt.
+
+4 neue Härtungstests. Vollständige Suite: 471/471 Tests grün.
 
 ### Neu: Filter-RPM-Drift-Diagnose (flex, Community-Beitrag)
 

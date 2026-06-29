@@ -183,25 +183,25 @@
         "name": "Nachtlüftung Ø 7 Tage"
       },
       "eps_exhaust": {
-        "name": "WRG Abluftseite"
+        "name": "Wärmerückgewinnung Abluftseite"
       },
       "energy_balance_ratio": {
-        "name": "Energiebilanz-Verhältnis"
+        "name": "Energiebilanz (Plausibilitätscheck)"
       },
       "rpm_ratio": {
-        "name": "Motor RPM Verhältnis"
+        "name": "Drehzahlverhältnis Zu-/Abluft"
       },
       "analytics_maturity": {
-        "name": "Analytics Reifegrad"
+        "name": "Selbstlernen Fortschritt"
       },
       "analytics_season": {
-        "name": "Analytics Saison"
+        "name": "Erkannte Jahreszeit"
       },
       "fan_law_max_deviation": {
-        "name": "Fanlaufgesetz Max-Abweichung"
+        "name": "Leistungsmodell Abweichung (max)"
       },
       "spi_stufe4": {
-        "name": "Spezifischer Leistungseintrag Stufe 4"
+        "name": "Leistung pro Luftmenge (Stufe 4)"
       },
       "current_mode_text": {
         "name": "Betriebsmodus"
@@ -238,6 +238,9 @@
       },
       "motor_zuluft_rpm_flex": {
         "name": "Zuluft-Ventilator U/min"
+      },
+      "energy_total": {
+        "name": "Energie gesamt"
       }
     },
     "binary_sensor": {
@@ -278,16 +281,16 @@
         "name": "Bypass Pendeln"
       },
       "rpm_anomaly": {
-        "name": "Motor RPM Anomalie"
+        "name": "Drehzahl-Anomalie (Lagerverschleiß)"
       },
       "ratio_anomaly": {
-        "name": "Motor Asymmetrie Trend"
+        "name": "Drehzahlverhältnis-Anomalie"
       },
       "eta_below_baseline": {
-        "name": "WRG unter Referenzwert"
+        "name": "Wärmerückgewinnung unter Normal"
       },
       "fan_law_anomaly": {
-        "name": "Fanlaufgesetz Abweichung"
+        "name": "Leistungsmodell-Anomalie"
       },
       "alarm_active": {
         "name": "Alarm aktiv"
