@@ -492,6 +492,8 @@ async def _probe_modbus(
     import logging as _log
     _log.getLogger("pymodbus").setLevel(_log.CRITICAL)
 
+    from .flex_coordinator import extract_unit_type
+
     try:
         from pymodbus.client import AsyncModbusTcpClient
         from pymodbus.client.mixin import ModbusClientMixin
@@ -518,7 +520,7 @@ async def _probe_modbus(
                 )
                 return {"unit_type": None, "model": None}
             sys_id_raw = _u32(r.registers)
-            unit_type = sys_id_raw & 0xFF
+            unit_type = extract_unit_type(sys_id_raw)
             model = UNIT_TYPE_TO_MODEL.get(unit_type)
             if model is None:
                 # Firmware noch mitlesen, damit die Fehlermeldung dem Nutzer

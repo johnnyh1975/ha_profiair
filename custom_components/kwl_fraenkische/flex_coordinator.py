@@ -148,6 +148,35 @@ TIME_SYNC_INTERVAL: Final       = timedelta(hours=24)
 ANNUAL_MAINTENANCE_HOURS: Final[int] = 8760
 
 
+def extract_unit_type(sys_id: int) -> int:
+    """Extrahiert den Gerätetyp aus prmSystemID (Register 40003/40004).
+
+    Laut offizieller Fränkische Modbus-Dokumentation (Kap. 4.2.4) gilt:
+    "Type is represented by Byte 4 in prmSystemID" -- also das HÖCHSTWERTIGE
+    Byte (Bits 24-31) des UINT32, nicht das niederwertigste. Beispiel aus der
+    Doku: 0x040035D3 -> Typ 0x04. Reporter (360 flex, FW 3.22): 0x0F0035C3 ->
+    Typ 0x0F = 15.
+
+    Frühere Versionen lasen fälschlich das Low-Byte (sys_id & 0xFF); das
+    funktionierte nur, solange das Low-Byte zufällig dem Typcode entsprach,
+    und brach bei Firmware, die dort eine Seriennummer ablegt (Wert 195).
+
+    Primär wird das dokumentierte High-Byte geprüft. Führt das zu keinem
+    bekannten Typ, wird als defensiver Fallback das Low-Byte versucht -- so
+    bleibt ein evtl. abweichend kodiertes Altgerät kompatibel, ohne die
+    dokumentierte Semantik aufzugeben.
+    """
+    high_byte = (sys_id >> 24) & 0xFF   # Doku: "Byte 4" (1-basiert)
+    if high_byte in UNIT_TYPE_TO_MODEL:
+        return high_byte
+    low_byte = sys_id & 0xFF            # Fallback für Altgeräte
+    if low_byte in UNIT_TYPE_TO_MODEL:
+        return low_byte
+    # Nichts Bekanntes -- High-Byte zurückgeben (dokumentierte Position),
+    # damit die Fehlermeldung den nach Doku maßgeblichen Wert zeigt.
+    return high_byte
+
+
 # ── Bypass-Status: Integer → String ──────────────────────────────────────────
 
 _BYPASS_STATE: Final[dict[int, str]] = {
@@ -663,9 +692,9 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         fw_minor = fw_raw & 0xFF
         fw_str = f"{fw_major}.{fw_minor}"
 
-        # System-ID → Unit-Typ (Byte 0 des Low-Words)
+        # System-ID → Unit-Typ. Laut Doku im HIGH-Byte (Byte 4) des UINT32.
         sys_id = u32(raw["s_2"])
-        unit_type = sys_id & 0xFF
+        unit_type = extract_unit_type(sys_id)
         model = UNIT_TYPE_TO_MODEL.get(unit_type)
         if model is None:
             # Diagnose-Info direkt in die Meldung: Rohwerte + Firmware, damit

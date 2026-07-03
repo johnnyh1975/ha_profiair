@@ -5,10 +5,56 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.0.5] – 2026-07
+
+### Bugfix: Gerätetyp-Erkennung (flex/flat)
+
+- **Gerätetyp wird jetzt dokumentenkonform aus dem korrekten Byte gelesen.**
+  Die Erkennung wertete bisher das niederwertigste Byte der System-ID
+  (Register 40003) aus. Laut offizieller Fränkische Modbus-Dokumentation
+  (Kap. 4.2.4, „Type is represented by Byte 4 in prmSystemID") liegt der Typ
+  jedoch im höchstwertigen Byte. Auf älterer Firmware stimmten beide zufällig
+  überein; neuere Firmware (z.B. 3.22) legt im unteren Byte eine Seriennummer
+  ab, wodurch ein 360 flex fälschlich als „Unknown device type 195" abgewiesen
+  wurde. Der Typ wird nun aus dem dokumentierten High-Byte gelesen, mit
+  Low-Byte-Fallback für eventuell abweichend kodierte Altgeräte -- bestehende
+  Installationen sind dadurch nicht betroffen.
+- Vollständige Gegenprüfung **aller** genutzten Modbus-Register gegen die
+  offizielle Dokumentation: 22 von 23 waren bereits korrekt, nur die
+  System-ID-Byte-Position war fehlerhaft.
+
+9 neue Tests (Doku-Beispiel, realer Reporter-Wert 0x0F0035C3, Altgeräte-
+Fallback). Vollständige Suite: 497/497 Tests grün.
+
+
+## [2.0.4] – 2026-07
+
+### Diagnose: aussagekräftigere Fehlermeldung bei unbekanntem Gerätetyp
+
+- Schlägt das Setup mit „Unbekannter Gerätetyp" fehl, zeigt die Meldung jetzt
+  zusätzlich den vollständigen System-ID-Rohwert (0x…) und die Firmware-Version
+  an -- nicht nur den maskierten Byte-Wert. Ein Nutzer kann damit alle für die
+  Diagnose nötigen Angaben direkt aus der Home-Assistant-Anzeige in ein
+  GitHub-Issue kopieren, ohne selbst Modbus abfragen zu müssen. Dieser
+  Register-Rohwert war es, der die Ursache des „Unknown device type 195"-
+  Problems auf firmware 3.22 sichtbar gemacht hat (siehe 2.0.5).
+
+
 ## [2.0.3] – 2026-06
 
 ### UX-Verbesserungen (systematisches UX-Review)
 
+- **Vollständiger Modbus-Register-Dump in der Diagnose (flex/flat).** Der
+  HA-Diagnose-Download enthält für flex/flat-Geräte jetzt einen kompletten,
+  block-weisen Register-Sweep über den gesamten bekannten Adressraum -- roh
+  (hex) und, wo bekannt, mit Bedeutung annotiert. Gedacht für
+  Reverse-Engineering neuer Modelle/Firmware und für das Debugging einzelner
+  Registerwerte, ohne dass der Nutzer selbst Modbus abfragen muss. Der Sweep
+  ist bewusst fehlertolerant (block-weise, Lock pro Block, überspringt nicht
+  existierende Register) und rein lesend. Hinweis: Der Diagnose-Download
+  setzt ein erfolgreich eingerichtetes Gerät voraus -- für Geräte, deren
+  Setup an einem unbekannten Typ scheitert, bleibt die erweiterte
+  Fehlermeldung (2.0.4) bzw. das Standalone-Dump-Skript der Weg.
 - **Nachtkühlungs-Kernwerte standardmäßig aktiv.** `night_cooling_last_k`
   (letzter Kühlerfolg) und `night_cooling_7d_avg_k` (7-Tage-Schnitt) sind jetzt
   standardmäßig sichtbar -- sie sind für jeden relevant, der die Sommerkühlung

@@ -465,7 +465,7 @@ class TestModbusNoResponseHandling:
         src = _get_function_source("_probe_modbus")
         # r.isError() Check muss vor der unit_type Extraktion erfolgen
         is_error_pos = src.find("r.isError()")
-        unit_type_pos = src.find("unit_type = sys_id_raw")
+        unit_type_pos = src.find("unit_type = extract_unit_type")
         assert is_error_pos >= 0 and unit_type_pos >= 0
         assert is_error_pos < unit_type_pos
 

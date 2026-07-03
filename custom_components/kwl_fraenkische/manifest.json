@@ -1,7 +1,7 @@
 {
   "domain": "kwl_fraenkische",
-  "name": "profi-air (Fränkische Rohrwerke)",
-  "version": "2.0.4",
+  "name": "profi-air (Fr\u00e4nkische Rohrwerke)",
+  "version": "2.0.5",
   "config_flow": true,
   "documentation": "https://github.com/johnnyh1975/ha-profiair",
   "issue_tracker": "https://github.com/johnnyh1975/ha-profiair/issues",
