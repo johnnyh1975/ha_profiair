@@ -98,6 +98,52 @@ _SETUP_BLOCKS: Final[tuple[tuple[int, int], ...]] = (
 
 _POLL_SLOW_DIVISOR: Final[int] = 10   # Slow-Block alle 10 Polls (~5 min @ 30 s)
 _DEFECT_THRESHOLD:  Final[int] = 10   # Konsekutive Polls bevor Repair Issue erscheint
+
+# Bekannte Register (0-basierter Offset → Bedeutung) zur Annotation des
+# Diagnose-Register-Dumps. Rein informativ; deckt nicht jedes Register ab,
+# genau deshalb existiert der breite Sweep.
+_KNOWN_REGISTERS: Final[dict[int, str]] = {
+    2:   "System ID (UINT32, Byte0=Unit-Typ)",
+    24:  "Firmware Version (UINT32)",
+    40:  "MAC Addr High (UINT32)",
+    42:  "MAC Addr Low (UINT32)",
+    84:  "HAL Left / A-B switch (UINT32)",
+    86:  "HAL Right (UINT32)",
+    100: "Fan1 RPM (FLOAT)",
+    102: "Fan2 RPM (FLOAT)",
+    110: "Time sync target (UINT32, write)",
+    132: "T1 Outdoor (FLOAT)",
+    134: "T2 Supply (FLOAT)",
+    136: "T3 Extract (FLOAT)",
+    138: "T4 Exhaust (FLOAT)",
+    140: "T5 (FLOAT)",
+    160: "Preheater Duty % (UINT32)",
+    168: "Mode end mask (UINT32, write)",
+    196: "RH % (UINT32)",
+    198: "Bypass State (UINT32)",
+    324: "Fan Level (UINT32, write)",
+    325: "Fan Level second reg (unklar, siehe XML IO324)",
+    340: "RH Setpoint % (UINT32)",
+    430: "VOC ppm (UINT32)",
+    444: "Bypass Tmin (FLOAT)",
+    446: "Bypass Tmax (FLOAT)",
+    472: "Current Mode (UINT32)",
+    514: "Alarm clear (UINT32, write)",
+    516: "Alarm Code (UINT32)",
+    518: "Ref RPM Extract S3 (UINT32)",
+    520: "Ref RPM Supply S3 (UINT32)",
+    554: "Filter Remaining (UINT32)",
+    556: "Filter Total / interval (UINT32)",
+    558: "Filter reset (UINT32, write)",
+    574: "CO2 ppm (UINT32)",
+    624: "Work Time h (UINT32)",
+}
+
+# Breiter Diagnose-Sweep: block-weise, fehlertolerant. Deckt den gesamten
+# bekannten Adressraum plus Reserve ab, um unbekannte/ungenutzte Register
+# für Reverse-Engineering sichtbar zu machen.
+_DIAG_SWEEP_END:   Final[int] = 640   # letzter Offset (exklusive Reserve dahinter)
+_DIAG_BLOCK_SIZE:  Final[int] = 64    # Register pro Read (< Modbus-Max 125)
 TIME_SYNC_INTERVAL: Final       = timedelta(hours=24)
 ANNUAL_MAINTENANCE_HOURS: Final[int] = 8760
 
@@ -610,21 +656,34 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
 
         u32 = self._decode_uint32
 
+        # Firmware-Version zuerst dekodieren -- wird auch für eine
+        # aussagekräftige Fehlermeldung bei unbekanntem Gerätetyp gebraucht.
+        fw_raw = u32(raw["s_24"])
+        fw_major = (fw_raw >> 8) & 0xFF
+        fw_minor = fw_raw & 0xFF
+        fw_str = f"{fw_major}.{fw_minor}"
+
         # System-ID → Unit-Typ (Byte 0 des Low-Words)
         sys_id = u32(raw["s_2"])
         unit_type = sys_id & 0xFF
         model = UNIT_TYPE_TO_MODEL.get(unit_type)
         if model is None:
+            # Diagnose-Info direkt in die Meldung: Rohwerte + Firmware, damit
+            # ein Reporter alles Nötige aus der HA-Fehleranzeige kopieren kann,
+            # ohne separat Modbus pollen zu müssen. Der low-byte-Wert allein
+            # (z.B. 195) reicht nicht -- der volle 32-Bit-Wert und die
+            # Nachbarbytes zeigen, ob der Typ auf neuerer Firmware anders
+            # kodiert ist oder in einem anderen Byte liegt.
+            raw_regs = " ".join(f"0x{r:04X}" for r in raw["s_2"][:2])
             raise UpdateFailed(
-                f"Unbekannter UVC-Gerätetyp: {unit_type} "
-                f"(unterstützt: {list(UNIT_TYPE_TO_MODEL.keys())})"
+                f"Unbekannter profi-air Gerätetyp: {unit_type} "
+                f"(0x{unit_type:02X}). "
+                f"System-ID Rohwert: 0x{sys_id:08X} [Register 40003-40004: "
+                f"{raw_regs}], Firmware: {fw_str}. "
+                f"Unterstützt: {list(UNIT_TYPE_TO_MODEL.keys())}. "
+                f"Bitte diese Zeile vollständig im GitHub-Issue melden: "
+                f"https://github.com/johnnyh1975/ha-profiair/issues"
             )
-
-        # Firmware-Version
-        fw_raw = u32(raw["s_24"])
-        fw_major = (fw_raw >> 8) & 0xFF
-        fw_minor = fw_raw & 0xFF
-        fw_str = f"{fw_major}.{fw_minor}"
 
         # MAC-Adresse → Unique-ID
         mac_high = u32(raw["s_40"][0:2])
@@ -1016,6 +1075,73 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
 
     async def _async_sync_time_callback(self, _now: Any = None) -> None:
         await self._async_sync_time()
+
+    # ── Diagnose: vollständiger Register-Dump ────────────────────────────────
+
+    async def async_dump_all_registers(self) -> dict[str, Any]:
+        """Liest den gesamten bekannten Adressraum block-weise aus.
+
+        Für den HA-Diagnose-Download gedacht (Reverse-Engineering neuer
+        Modelle/Firmware, Debugging). Bewusst fehlertolerant:
+
+        - block-weise (je _DIAG_BLOCK_SIZE Register), damit ein einzelnes
+          nicht existierendes Register nicht den gesamten Dump kippt
+        - Lock PRO Block, nicht über den ganzen Sweep -- der normale Poll
+          wird dadurch nicht sekundenlang blockiert
+        - jeder Registerwert wird roh (hex) ausgegeben, bekannte Register
+          zusätzlich mit Label annotiert
+
+        Reiner Lese-Vorgang, verändert nichts am Gerät.
+        """
+        result: dict[str, Any] = {
+            "sweep_end": _DIAG_SWEEP_END,
+            "block_size": _DIAG_BLOCK_SIZE,
+            "blocks": [],
+            "registers": {},
+        }
+        registers: dict[str, Any] = result["registers"]
+
+        offset = 0
+        while offset < _DIAG_SWEEP_END:
+            count = min(_DIAG_BLOCK_SIZE, _DIAG_SWEEP_END - offset)
+            block_info: dict[str, Any] = {"offset": offset, "count": count}
+            try:
+                async with self._lock:
+                    if not self._client.connected:
+                        block_info["status"] = "not_connected"
+                        result["blocks"].append(block_info)
+                        break
+                    r = await self._client.read_holding_registers(
+                        address=offset, count=count, device_id=1
+                    )
+                if r.isError():
+                    block_info["status"] = f"error: {r}"
+                elif len(r.registers) != count:
+                    block_info["status"] = (
+                        f"short_read: got {len(r.registers)} of {count}"
+                    )
+                else:
+                    block_info["status"] = "ok"
+                    for i, reg in enumerate(r.registers):
+                        off = offset + i
+                        entry: dict[str, Any] = {
+                            "addr_40k": 40001 + off,
+                            "hex": f"0x{reg:04X}",
+                            "dec": reg,
+                        }
+                        if off in _KNOWN_REGISTERS:
+                            entry["label"] = _KNOWN_REGISTERS[off]
+                        # Nur Register mit Wert oder Label aufnehmen -- hält den
+                        # Dump lesbar, Nullen ohne Bedeutung werden ausgelassen.
+                        if reg != 0 or off in _KNOWN_REGISTERS:
+                            registers[str(off)] = entry
+            except Exception as err:  # noqa: BLE001
+                block_info["status"] = f"exception: {err!r}"
+            result["blocks"].append(block_info)
+            offset += count
+
+        result["nonzero_or_known_count"] = len(registers)
+        return result
 
     # ── Hilfsmethode: Watt-Map aufbauen ──────────────────────────────────────
 

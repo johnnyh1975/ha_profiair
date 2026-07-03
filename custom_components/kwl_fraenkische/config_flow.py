@@ -104,7 +104,9 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
                         data_schema=STEP_USER_SCHEMA,
                         errors=errors,
                         description_placeholders={
-                            "type_code": str(flex_result["unit_type"])
+                            "type_code": str(flex_result["unit_type"]),
+                            "sys_id_raw": f"0x{flex_result.get('sys_id_raw', 0):08X}",
+                            "firmware": str(flex_result.get("firmware", "?")),
                         },
                     )
                 self._host = host
@@ -515,11 +517,34 @@ async def _probe_modbus(
                     host,
                 )
                 return {"unit_type": None, "model": None}
-            unit_type = _u32(r.registers) & 0xFF
+            sys_id_raw = _u32(r.registers)
+            unit_type = sys_id_raw & 0xFF
             model = UNIT_TYPE_TO_MODEL.get(unit_type)
             if model is None:
-                _LOGGER.debug("Modbus-Probe: unbekannter Unit-Typ %d auf %s", unit_type, host)
-                return {"unit_type": unit_type, "model": None}
+                # Firmware noch mitlesen, damit die Fehlermeldung dem Nutzer
+                # alle Diagnose-Daten zeigt (Rohwert + Firmware) -- ohne dass
+                # er separat Modbus pollen muss.
+                fw_diag = "?"
+                try:
+                    rf = await client.read_holding_registers(
+                        address=24, count=2, device_id=1
+                    )
+                    if not rf.isError():
+                        fwr = _u32(rf.registers)
+                        fw_diag = f"{(fwr >> 8) & 0xFF}.{fwr & 0xFF}"
+                except Exception:  # noqa: BLE001
+                    pass
+                _LOGGER.warning(
+                    "Modbus-Probe: unbekannter Unit-Typ %d (0x%02X) auf %s, "
+                    "System-ID Rohwert 0x%08X, Firmware %s",
+                    unit_type, unit_type, host, sys_id_raw, fw_diag,
+                )
+                return {
+                    "unit_type": unit_type,
+                    "model": None,
+                    "sys_id_raw": sys_id_raw,
+                    "firmware": fw_diag,
+                }
 
             # Firmware-Version
             fw_str = "?"

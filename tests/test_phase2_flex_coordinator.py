@@ -737,3 +737,76 @@ class TestTimeSyncFailureThrottle:
         assert "== 1" in src
         assert "_LOGGER.warning" in src
         assert "_LOGGER.debug" in src
+
+
+class TestRegisterDumpDiagnostic:
+    """Vollständiger Register-Dump für Diagnose/Reverse-Engineering.
+    Der Coordinator ist im Stub nicht instanziierbar (kein HA), daher werden
+    die Robustheits-Eigenschaften AST-/quelltextbasiert geprüft."""
+
+    def _method_source(self, method_name: str) -> str:
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        tree = ast.parse(source)
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef) and cls.name == "KWLFlexCoordinator":
+                for item in cls.body:
+                    if isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef)) and item.name == method_name:
+                        lines = source.splitlines()
+                        return "\n".join(lines[item.lineno - 1:item.end_lineno])
+        return ""
+
+    def test_dump_method_exists(self):
+        assert self._method_source("async_dump_all_registers"), (
+            "async_dump_all_registers fehlt"
+        )
+
+    def test_dump_reads_block_wise(self):
+        """Muss block-weise lesen (nicht ein Riesen-Read), sonst kippt ein
+        einzelnes fehlendes Register den gesamten Dump."""
+        src = self._method_source("async_dump_all_registers")
+        assert "_DIAG_BLOCK_SIZE" in src
+        assert "while offset" in src
+
+    def test_dump_takes_lock_per_block(self):
+        """Lock PRO Block, nicht über den ganzen Sweep -- sonst wird der
+        normale Poll sekundenlang blockiert. Das 'async with self._lock'
+        muss innerhalb der Schleife stehen."""
+        src = self._method_source("async_dump_all_registers")
+        while_pos = src.find("while offset")
+        lock_pos = src.find("async with self._lock")
+        assert while_pos >= 0 and lock_pos >= 0
+        assert lock_pos > while_pos, "Lock muss innerhalb der Sweep-Schleife liegen"
+
+    def test_dump_is_fault_tolerant(self):
+        """Fehler pro Block müssen abgefangen werden, ohne den Sweep zu beenden."""
+        src = self._method_source("async_dump_all_registers")
+        assert "isError()" in src
+        assert "short_read" in src
+        assert "except Exception" in src
+
+    def test_dump_annotates_known_registers(self):
+        src = self._method_source("async_dump_all_registers")
+        assert "_KNOWN_REGISTERS" in src
+        assert "label" in src
+
+    def test_dump_is_read_only(self):
+        """Darf ausschließlich lesen -- keine write_registers-Aufrufe."""
+        src = self._method_source("async_dump_all_registers")
+        assert "write_registers" not in src
+        assert "_write_uint32" not in src
+
+    def test_known_registers_map_present(self):
+        src = open(FLEX_COORD_PY).read()
+        assert "_KNOWN_REGISTERS" in src
+        # Ein paar Schlüssel-Register müssen annotiert sein
+        for label in ("System ID", "Fan Level", "Ref RPM Extract"):
+            assert label in src, f"Annotation für {label!r} fehlt"
+
+    def test_diagnostics_includes_register_dump(self):
+        """diagnostics.py muss den Dump für flex einbinden -- fehlertolerant."""
+        src = open(
+            FLEX_COORD_PY.replace("flex_coordinator.py", "diagnostics.py")
+        ).read()
+        assert "async_dump_all_registers" in src
+        assert "register_dump" in src

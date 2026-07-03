@@ -425,9 +425,14 @@ class TestUnknownUnitTypeHandling:
     """Bug-Fix: unbekannter Unit-Typ darf nicht in generischem cannot_connect verschwinden."""
 
     def test_probe_modbus_returns_dict_not_none_for_unknown_type(self):
-        """Bei unbekanntem Unit-Typ: dict mit model=None statt bare None."""
+        """Bei unbekanntem Unit-Typ: dict mit model=None plus Diagnose-Feldern
+        (Rohwert + Firmware) statt bare None."""
         src = _get_function_source("_probe_modbus")
-        assert '"unit_type": unit_type, "model": None' in src
+        assert '"unit_type": unit_type' in src
+        assert '"model": None' in src
+        # Diagnose-Info für Self-Service-Reporting muss mit zurückgegeben werden
+        assert '"sys_id_raw": sys_id_raw' in src
+        assert '"firmware":' in src
 
     def test_step_user_checks_model_none(self):
         """async_step_user muss model=None Fall explizit abfangen."""
@@ -460,7 +465,7 @@ class TestModbusNoResponseHandling:
         src = _get_function_source("_probe_modbus")
         # r.isError() Check muss vor der unit_type Extraktion erfolgen
         is_error_pos = src.find("r.isError()")
-        unit_type_pos = src.find("unit_type = _u32")
+        unit_type_pos = src.find("unit_type = sys_id_raw")
         assert is_error_pos >= 0 and unit_type_pos >= 0
         assert is_error_pos < unit_type_pos
 
@@ -468,6 +473,34 @@ class TestModbusNoResponseHandling:
         """async_step_user muss zwischen unit_type=None und unbekanntem Code unterscheiden."""
         src = _get_class_method_source("KWLConfigFlow", "async_step_user")
         assert 'flex_result["unit_type"] is None' in src
+
+    def test_unknown_device_error_includes_diagnostic_placeholders(self):
+        """Self-Service-Diagnose: die unknown_device_type-Fehleranzeige muss
+        Rohwert und Firmware als Platzhalter durchreichen, damit ein Reporter
+        alle nötigen Angaben aus der HA-Anzeige kopieren kann -- ohne separat
+        Modbus pollen zu müssen."""
+        src = _get_class_method_source("KWLConfigFlow", "async_step_user")
+        # Der Block, der unknown_device_type setzt, muss die Zusatz-Platzhalter füllen
+        idx = src.find('"unknown_device_type"')
+        assert idx >= 0
+        block = src[idx:idx + 500]
+        assert "sys_id_raw" in block, "Rohwert-Platzhalter fehlt in der Fehleranzeige"
+        assert "firmware" in block, "Firmware-Platzhalter fehlt in der Fehleranzeige"
+
+    def test_unknown_device_type_translation_has_placeholders(self):
+        """Die Übersetzungstexte müssen die neuen Platzhalter referenzieren,
+        sonst werden die Diagnose-Werte nie angezeigt."""
+        import json, os
+        base = os.path.join(
+            os.path.dirname(__file__), "..",
+            "custom_components", "kwl_fraenkische",
+        )
+        for fname in ("strings.json", "translations/en.json", "translations/de.json"):
+            with open(os.path.join(base, fname), encoding="utf-8") as f:
+                txt = json.load(f)["config"]["error"]["unknown_device_type"]
+            assert "{type_code}" in txt
+            assert "{sys_id_raw}" in txt, f"{fname}: sys_id_raw-Platzhalter fehlt"
+            assert "{firmware}" in txt, f"{fname}: firmware-Platzhalter fehlt"
 
     def test_step_user_shows_modbus_no_response_error(self):
         src = _get_class_method_source("KWLConfigFlow", "async_step_user")

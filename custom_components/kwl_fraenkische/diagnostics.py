@@ -89,6 +89,13 @@ async def async_get_config_entry_diagnostics(
             "bypass_recommended":       data.bypass_recommended       if data else None,
             "frost_risk":               data.frost_risk               if data else None,
         }
+        # Vollständiger Register-Dump für Reverse-Engineering / Debugging.
+        # Block-weise und fehlertolerant; ein Fehler hier darf die restliche
+        # Diagnose nicht verhindern.
+        try:
+            base["register_dump"] = await coordinator.async_dump_all_registers()
+        except Exception as err:  # noqa: BLE001
+            base["register_dump"] = {"error": repr(err)}
     else:
         # ── Touch Diagnose ────────────────────────────────────────────────────
         caps = coordinator.capabilities
