@@ -88,9 +88,12 @@ Everything runs locally. No cloud, no subscription, no external services.
 
 | Device | Protocol | Status |
 |---|---|---|
-| **profi-air 250 flex** | Modbus TCP | ✅ Full support |
-| **profi-air 360 flex** | Modbus TCP | ✅ Full support |
-| **profi-air 180 flat** | Modbus TCP | ⚠️ Experimental — basic entities only, not fully validated |
+| **profi-air 250 flex** | Modbus TCP | ⚙️ Built from the official Modbus documentation; real-hardware feedback welcome |
+| **profi-air 360 flex** | Modbus TCP | ⚙️ Detected on real hardware; full validation of all values in progress |
+| **profi-air 180 flat** | Modbus TCP | ⚠️ Experimental — device type from documentation, not yet confirmed on hardware |
+| **profi-air 130 flat** | Modbus TCP | ⚠️ Experimental — device type from a community report (type 27), register map not yet verified |
+
+The flex/flat side was implemented from the official Fränkische Modbus TCP/IP documentation. The touch side is validated against a real 400 touch; the flex/flat side is now reaching real hardware, and feedback from flex/flat owners is what drives it toward full validation. If you own a flex or flat unit, reports on GitHub — even just confirming that temperatures and fan levels read correctly — are very welcome.
 
 The integration detects the protocol automatically: it tries HTTP first (touch), then falls back to Modbus (flex/flat). No manual protocol selection needed.
 

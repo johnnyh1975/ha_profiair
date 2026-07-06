@@ -18,6 +18,7 @@ DEFAULT_MODEL = MODEL_PROFI_AIR_400
 MODEL_PROFI_AIR_250_FLEX = "profi_air_250_flex"
 MODEL_PROFI_AIR_360_FLEX = "profi_air_360_flex"
 MODEL_PROFI_AIR_180_FLAT = "profi_air_180_flat"  # Experimentell: kein validierter Messwert
+MODEL_PROFI_AIR_130_FLAT = "profi_air_130_flat"  # Community-verifiziert (Typ 27), Registerkarte noch nicht bestätigt
 
 # Protokoll-Zuordnung pro Modell-Familie
 MODEL_PROTOCOLS: dict[str, str] = {
@@ -26,14 +27,21 @@ MODEL_PROTOCOLS: dict[str, str] = {
     MODEL_PROFI_AIR_250_FLEX: PROTOCOL_MODBUS,
     MODEL_PROFI_AIR_360_FLEX: PROTOCOL_MODBUS,
     MODEL_PROFI_AIR_180_FLAT: PROTOCOL_MODBUS,
+    MODEL_PROFI_AIR_130_FLAT: PROTOCOL_MODBUS,
 }
 
-# UVC Controller prmSystemID Byte 0 → Modell
-# Quelle: Fränkische UVC Controller Modbus TCP/IP Doku, Rev. 3.b
+# UVC Controller prmSystemID → Modell.
+# Der Gerätetyp steht laut offizieller Fränkische Modbus-Doku (Kap. 4.2.4)
+# im HIGH-Byte (Byte 4) der System-ID -- siehe extract_unit_type().
+# Typ 4/11/15 sind durch die Doku belegt; Typ 27 (130 flat) stammt aus einem
+# Community-Report (System-ID 0x1B0035C3, Firmware 3.22) und ist NICHT
+# doku-belegt. Die Registerkarte des 130 flat ist noch nicht auf realer
+# Hardware verifiziert.
 UNIT_TYPE_TO_MODEL: dict[int, str] = {
     4:  MODEL_PROFI_AIR_180_FLAT,   # Experimentell
     11: MODEL_PROFI_AIR_250_FLEX,
     15: MODEL_PROFI_AIR_360_FLEX,
+    27: MODEL_PROFI_AIR_130_FLAT,   # Community-verifiziert, nicht doku-belegt
 }
 
 # Anzeige-Name pro Modell (für device_info und Config Flow Bestätigung)
@@ -43,6 +51,7 @@ MODEL_DISPLAY: dict[str, str] = {
     MODEL_PROFI_AIR_250_FLEX: "profi-air 250 flex",
     MODEL_PROFI_AIR_360_FLEX: "profi-air 360 flex",
     MODEL_PROFI_AIR_180_FLAT: "profi-air 180 flat (experimentell)",
+    MODEL_PROFI_AIR_130_FLAT: "profi-air 130 flat (experimentell)",
 }
 
 # EC-Motor-Modell: P = P_base + k × (RPM/RPM_max)³
@@ -59,6 +68,7 @@ WATT_DEFAULTS: dict[str, dict[int, float | None]] = {
     MODEL_PROFI_AIR_250_FLEX: {1: None, 2: None, 3: None, 4: None},
     MODEL_PROFI_AIR_360_FLEX: {1: None, 2: None, 3: None, 4: None},
     MODEL_PROFI_AIR_180_FLAT: {1: None, 2: None, 3: None, 4: None},
+    MODEL_PROFI_AIR_130_FLAT: {1: None, 2: None, 3: None, 4: None},
 }
 
 # Maximale Gesamtleistung beider Lüfter (aus Datenblatt, ohne Defroster)

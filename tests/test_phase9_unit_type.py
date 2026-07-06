@@ -45,6 +45,14 @@ class TestExtractUnitType:
         """Offizielles Doku-Beispiel (Kap. 4.2.4): 0x040035D3 → Typ 4."""
         assert extract_unit_type(0x040035D3) == 4
 
+    def test_reporter_130_flat_fw322(self):
+        """Realer 130-flat-Report: 0x1B0035C3, Firmware 3.22.
+        High-Byte 0x1B = 27 = 130 flat (community-verifiziert).
+        Low-Byte wäre 0xC3 = 195 (der alte Bug). Beachte: identisches
+        Serien-Fragment 0x0035C3 wie beim 360-flex-Report -- stützt, dass
+        nur das High-Byte den Typ trägt."""
+        assert extract_unit_type(0x1B0035C3) == 27
+
     def test_high_byte_250_flex(self):
         assert extract_unit_type(0x0B0012AB) == 11
 

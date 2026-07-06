@@ -5,6 +5,27 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.0.6] – 2026-07
+
+### profi-air 130 flat wird erkannt (Typ 27)
+
+- Durch die in 2.0.5 korrigierte Byte-Auswertung der System-ID liefert ein
+  130 flat den Gerätetyp-Code 27 (realer Report: System-ID 0x1B0035C3,
+  Firmware 3.22). Dieser Code ist **nicht** in der offiziellen Fränkische-
+  Dokumentation aufgeführt und wurde aus einem Community-Report übernommen
+  (im Code und in der Modellliste als „experimentell" gekennzeichnet). Damit
+  läuft das Setup eines 130 flat durch, statt mit „Unbekannter Gerätetyp"
+  abzubrechen.
+- **Offen:** Ob die Registerkarte des 130 flat vollständig mit den flex-
+  Geräten übereinstimmt, ist noch nicht auf realer Hardware verifiziert.
+  Rückmeldungen zu Plausibilität von Temperaturen, Lüfterstufen, Bypass und
+  Filter sind willkommen; der Register-Dump in der HA-Diagnose (seit 2.0.3)
+  hilft bei der Analyse.
+
+2 neue Tests (realer 130-flat-Wert 0x1B0035C3 = Typ 27, Mapping).
+Vollständige Suite: 499/499 grün.
+
+
 ## [2.0.5] – 2026-07
 
 ### Bugfix: Gerätetyp-Erkennung (flex/flat)

@@ -125,10 +125,16 @@ class TestUnitTypeToModel:
         c = _const()
         assert c.UNIT_TYPE_TO_MODEL[15] == c.MODEL_PROFI_AIR_360_FLEX
 
-    def test_only_known_types(self):
-        """Nur dokumentierte Unit-Typ-Codes (4, 11, 15)."""
+    def test_type_27_is_130_flat(self):
+        """Typ 27 = 130 flat. Community-verifiziert (System-ID 0x1B0035C3,
+        Firmware 3.22), nicht doku-belegt."""
         c = _const()
-        assert set(c.UNIT_TYPE_TO_MODEL.keys()) == {4, 11, 15}
+        assert c.UNIT_TYPE_TO_MODEL[27] == c.MODEL_PROFI_AIR_130_FLAT
+
+    def test_only_known_types(self):
+        """Bekannte Unit-Typ-Codes: 4/11/15 (doku-belegt) + 27 (Community)."""
+        c = _const()
+        assert set(c.UNIT_TYPE_TO_MODEL.keys()) == {4, 11, 15, 27}
 
     def test_all_values_are_modbus_models(self):
         """Alle Werte müssen Modbus-Modelle sein."""
@@ -357,9 +363,9 @@ class TestManifest:
     def _load(self):
         return json.loads(open(MANIFEST_PATH).read())
 
-    def test_version_is_2_0_5(self):
+    def test_version_is_2_0_6(self):
         m = self._load()
-        assert m["version"] == "2.0.5"
+        assert m["version"] == "2.0.6"
 
     def test_pymodbus_in_requirements(self):
         m = self._load()
