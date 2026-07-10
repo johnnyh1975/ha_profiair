@@ -49,25 +49,27 @@ This integration adds that layer entirely within Home Assistant, with no cloud a
 | **Motor diagnostics** | No feedback | RPM asymmetry detection with direction check |
 | **Filter** | Display alarm only | Remaining days sensor, configurable interval, HA notification before alarm |
 | **Temperatures** | Device screen only | All four air temperatures as HA sensors |
+| **Summer cooling** | Manual bypass toggle | Night-cooling result tracking (K cooled, efficiency, automation health) — works on any model; you supply the trigger automation |
+| **Self-learning** | None | Analytics engine: RPM baselines, efficiency baselines, bypass episode tracking, window-based night cooling metrics |
+| **Maintenance alerts** | Display alarm when overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
 
 ### touch (profi-air 250/400 touch) — additional
 
 | | Without this integration | With this integration |
 |---|---|---|
-| **Summer cooling** | Manual bypass toggle | Automatic night pre-cooling based on weather + indoor temperature |
 | **Energy tracking** | None | Cumulative kWh per level in HA Energy Dashboard |
 | **Power monitoring** | None | Continuous watt estimate from motor RPM — EC motor model P = P_base + k × (RPM/RPM_ref)³ |
-| **Self-learning** | None | Analytics engine: RPM baselines, efficiency baselines, bypass episode tracking, window-based night cooling tracking with efficiency and automation-health metrics |
-| **Maintenance alerts** | "F1" on display when filter is overdue | Early warning days before, plus bypass hunting, motor anomaly, efficiency baseline |
 
-### flex/flat (profi-air 250/360 flex, 180 flat) — additional
+### flex/flat (profi-air 250/360 flex, 180/130 flat) — additional
 
 | | Without this integration | With this integration |
 |---|---|---|
 | **Operating mode** | Device menu only | Mode selection from HA (Manual, Demand, Weekly, Away, Summer, Night, Fireplace) |
 | **Alarm monitoring** | Device display only | E1–E15 alarm text as HA sensor, binary `alarm_active`, clear button |
-| **Optional sensors** | Device screen only | VOC, relative humidity, CO₂, room temperature (when hardware present) |
-| **Fan level control** | Device touchscreen | HA control — v2.0.1, pending FC16 confirmation |
+| **Optional sensors** | Device screen only | VOC, relative humidity, CO₂ (when hardware present) — the 130 flat has no room-temperature sensor, so that value is shown as unavailable |
+| **Power (current)** | None | Live power draw of the active fan level, shown as an attribute on the fan entity (uses per-level watt values; measured defaults ship for the 130 flat) |
+| **Energy tracking** | None | Estimated cumulative kWh per level + total for the HA Energy Dashboard — flex/flat report no per-level hours over Modbus, so the integration counts level time itself (poll-based estimate); disabled by default, marked "(estimated)" |
+| **Fan level control** | Device touchscreen | HA control via the fan entity (level 1–4) |
 
 Everything runs locally. No cloud, no subscription, no external services.
 

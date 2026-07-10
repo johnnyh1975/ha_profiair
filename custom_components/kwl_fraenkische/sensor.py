@@ -257,6 +257,70 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
 
     # ------------------------------------------------------------------
+    # Energie flex/flat: GESCHÄTZT aus selbst gezählten Stufen-Stunden
+    # × konfigurierten Watt-Werten. flex/flat liefern keine Stunden pro
+    # Stufe über Modbus, daher zählt die Integration die Zeit je Stufe
+    # selbst (poll-basiert). Deshalb "(geschätzt)" im Namen und separate
+    # Keys, damit sie nicht mit den gemessenen touch-Sensoren kollidieren.
+    # ------------------------------------------------------------------
+    KWLSensorDescription(
+        key="energy_level_1_flex",
+        name="Energie Stufe 1 (geschätzt)",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.energy_level_1,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="energy_level_2_flex",
+        name="Energie Stufe 2 (geschätzt)",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.energy_level_2,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="energy_level_3_flex",
+        name="Energie Stufe 3 (geschätzt)",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.energy_level_3,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="energy_level_4_flex",
+        name="Energie Stufe 4 (geschätzt)",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.energy_level_4,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+    KWLSensorDescription(
+        key="energy_total_flex",
+        name="Energie gesamt (geschätzt)",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=1,
+        icon="mdi:lightning-bolt",
+        entity_registry_enabled_default=False,
+        value_fn=lambda d: d.energy_total,
+        supported_protocols=frozenset({PROTOCOL_MODBUS}),
+    ),
+
+    # ------------------------------------------------------------------
     # Betriebsstunden (standardmaessig ausgeblendet)
     # ------------------------------------------------------------------
     KWLSensorDescription(

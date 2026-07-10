@@ -147,6 +147,11 @@ _DIAG_BLOCK_SIZE:  Final[int] = 64    # Register pro Read (< Modbus-Max 125)
 TIME_SYNC_INTERVAL: Final       = timedelta(hours=24)
 ANNUAL_MAINTENANCE_HOURS: Final[int] = 8760
 
+# Platzhalterwert für T5 (Raumtemperatur), wenn kein Raumfühler verbaut ist.
+# Auf realer 130-flat-Hardware bestätigt: das Gerät liefert exakt 88.0 °C
+# (IEEE-754 0x42B00000), wenn kein Fühler angeschlossen werden kann.
+T5_NO_SENSOR_SENTINEL: Final[float] = 88.0
+
 
 def extract_unit_type(sys_id: int) -> int:
     """Extrahiert den Gerätetyp aus prmSystemID (Register 40003/40004).
@@ -254,6 +259,9 @@ class KWLFlexData:
         # Inbetriebnahme-Referenz-RPM bei Stufe 3 (für Filter-Drift-Diagnose)
         ref_rpm_extract_s3: int | None = None,
         ref_rpm_supply_s3: int | None = None,
+        # Selbst gezählte Betriebsstunden pro Stufe (für geschätzte Energie).
+        # dict {1..4: hours|None}; None wenn keine Analytics verfügbar.
+        level_hours: dict[int, float | None] | None = None,
     ) -> None:
         self._fan1_rpm        = fan1_rpm
         self._fan2_rpm        = fan2_rpm
@@ -283,6 +291,45 @@ class KWLFlexData:
         self._watt_map            = watt_map
         self.ref_rpm_extract_s3   = ref_rpm_extract_s3
         self.ref_rpm_supply_s3    = ref_rpm_supply_s3
+        self._level_hours         = level_hours or {1: None, 2: None, 3: None, 4: None}
+
+    def _energy_level_kwh(self, level: int) -> float | None:
+        """Geschätzter kumulativer Energieverbrauch einer Stufe (kWh).
+
+        Basis: selbst gezählte Betriebsstunden (Analytics) × Watt/Stufe.
+        None, wenn für die Stufe kein Watt-Wert konfiguriert ist oder noch
+        keine Stundenbasis vorliegt. Es ist eine Schätzung, keine Messung.
+        """
+        watt = self._watt_map.get(level)
+        hours = self._level_hours.get(level)
+        if watt is None or hours is None:
+            return None
+        return round(hours * watt / 1000.0, 3)
+
+    @property
+    def energy_level_1(self) -> float | None:
+        return self._energy_level_kwh(1)
+
+    @property
+    def energy_level_2(self) -> float | None:
+        return self._energy_level_kwh(2)
+
+    @property
+    def energy_level_3(self) -> float | None:
+        return self._energy_level_kwh(3)
+
+    @property
+    def energy_level_4(self) -> float | None:
+        return self._energy_level_kwh(4)
+
+    @property
+    def energy_total(self) -> float | None:
+        """Summe der geschätzten Stufen-Energie; None wenn keine Stufe Daten hat."""
+        parts = [self._energy_level_kwh(l) for l in (1, 2, 3, 4)]
+        valid = [p for p in parts if p is not None]
+        if not valid:
+            return None
+        return round(sum(valid), 3)
 
     # ── Gemeinsame Properties (identisch zu KWLData) ─────────────────────────
 
@@ -848,7 +895,14 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         t3 = _safe_temp(f132[4:6])
         t4 = _safe_temp(f132[6:8])
         t5_raw = _safe_temp(f132[8:10])
-        t5 = t5_raw if (t5_raw is not None and t5_raw != 0.0) else None
+        # T5 (Raumtemperatur/Funkfernbedienung) ist optional. Ist kein Fühler
+        # verbaut -- z.B. beim 130 flat, das konstruktiv keinen Raumfühler
+        # unterstützt -- liefert das Gerät einen Platzhalter (0.0 oder exakt
+        # 88.0 °C, bestätigt auf realer 130-flat-Hardware). Beide als "kein
+        # Sensor" behandeln, statt einen unplausiblen Wert anzuzeigen.
+        t5 = t5_raw
+        if t5_raw is None or t5_raw == 0.0 or t5_raw == T5_NO_SENSOR_SENTINEL:
+            t5 = None
 
         # Vorheizer (Fast-Block 160)
         preheater_duty = int(u32(raw.get("f_160", [0, 0]))) & 0xFF
@@ -916,6 +970,13 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             watt_map=self.watt_map,
             ref_rpm_extract_s3=caps.ref_rpm_extract_s3 if caps else None,
             ref_rpm_supply_s3=caps.ref_rpm_supply_s3 if caps else None,
+            # Selbst gezählte Stufen-Stunden aus den Analytics (Stand des
+            # vorherigen Polls; _update_analytics zählt danach hoch). Der eine
+            # Poll Versatz ist bei kumulativer Energie bedeutungslos.
+            level_hours=(
+                {l: self._analytics.level_hours(l) for l in (1, 2, 3, 4)}
+                if self._analytics is not None else None
+            ),
         )
 
     # ── Analytics + Repair Issues ──────────────────────────────────────────────

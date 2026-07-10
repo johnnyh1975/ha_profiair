@@ -241,6 +241,21 @@
       },
       "energy_total": {
         "name": "Energie gesamt"
+      },
+      "energy_level_1_flex": {
+        "name": "Energie Stufe 1 (geschätzt)"
+      },
+      "energy_level_2_flex": {
+        "name": "Energie Stufe 2 (geschätzt)"
+      },
+      "energy_level_3_flex": {
+        "name": "Energie Stufe 3 (geschätzt)"
+      },
+      "energy_level_4_flex": {
+        "name": "Energie Stufe 4 (geschätzt)"
+      },
+      "energy_total_flex": {
+        "name": "Energie gesamt (geschätzt)"
       }
     },
     "binary_sensor": {

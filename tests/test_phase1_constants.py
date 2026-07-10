@@ -144,6 +144,16 @@ class TestUnitTypeToModel:
                 f"UNIT_TYPE_TO_MODEL[{unit_type}]={model!r} ist kein Modbus-Modell"
             )
 
+    def test_130_flat_has_measured_watt_defaults(self):
+        """130 flat: reale Messwerte (Community/agmorpheus) 16/21/33/44 W.
+        Damit funktionieren die Energie-Sensoren out of the box."""
+        c = _const()
+        watt = c.WATT_DEFAULTS[c.MODEL_PROFI_AIR_130_FLAT]
+        assert watt == {1: 16.0, 2: 21.0, 3: 33.0, 4: 44.0}
+        # monoton steigend als Plausibilitätscheck
+        vals = [watt[i] for i in (1, 2, 3, 4)]
+        assert vals == sorted(vals)
+
 
 # ── Tests: MODEL_DISPLAY ─────────────────────────────────────────────────────
 
@@ -363,9 +373,9 @@ class TestManifest:
     def _load(self):
         return json.loads(open(MANIFEST_PATH).read())
 
-    def test_version_is_2_0_6(self):
+    def test_version_is_2_0_7(self):
         m = self._load()
-        assert m["version"] == "2.0.6"
+        assert m["version"] == "2.0.7"
 
     def test_pymodbus_in_requirements(self):
         m = self._load()

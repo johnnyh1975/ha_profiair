@@ -241,6 +241,21 @@
       },
       "energy_total": {
         "name": "Total energy"
+      },
+      "energy_level_1_flex": {
+        "name": "Energy level 1 (estimated)"
+      },
+      "energy_level_2_flex": {
+        "name": "Energy level 2 (estimated)"
+      },
+      "energy_level_3_flex": {
+        "name": "Energy level 3 (estimated)"
+      },
+      "energy_level_4_flex": {
+        "name": "Energy level 4 (estimated)"
+      },
+      "energy_total_flex": {
+        "name": "Total energy (estimated)"
       }
     },
     "binary_sensor": {

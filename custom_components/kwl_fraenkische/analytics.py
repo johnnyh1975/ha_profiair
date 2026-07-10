@@ -528,6 +528,52 @@ class NightCoolingTracker:
         return obj
 
 
+class LevelHoursTracker:
+    """Selbst gezählte Betriebsstunden pro Lüfterstufe (1-4).
+
+    flex/flat-Geräte liefern -- anders als touch -- KEINE Betriebsstunden pro
+    Stufe über Modbus, nur eine Gesamtstundenzahl (prmWorkTime). Für eine
+    Energieabschätzung (Stunden × Watt/Stufe) zählt dieser Tracker die Zeit je
+    Stufe selbst mit: bei jedem Poll wird das Poll-Intervall der aktuell
+    gemeldeten Stufe zugeschlagen.
+
+    Wichtige Eigenschaften / Grenzen:
+    - Es ist eine SCHÄTZUNG, keine Messung. Stufenwechsel zwischen zwei Polls
+      werden der zuletzt gesehenen Stufe zugerechnet; über Tage mittelt sich
+      das, aber es ist nicht sekundengenau.
+    - Die Zählerstände werden persistiert (via KWLAnalytics.to_dict), damit die
+      abgeleiteten Energiesensoren monoton bleiben (TOTAL_INCREASING) und nach
+      einem Neustart nicht auf 0 zurückfallen.
+    - Es werden nur gültige Stufen 1-4 gezählt; level None/0 wird ignoriert.
+    """
+
+    def __init__(self) -> None:
+        self._seconds: dict[int, float] = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+
+    def update(self, current_level: int | None, poll_interval_s: float) -> None:
+        if current_level in (1, 2, 3, 4) and poll_interval_s > 0:
+            self._seconds[current_level] += poll_interval_s
+
+    def hours(self, level: int) -> float | None:
+        """Kumulierte Stunden für eine Stufe (gerundet). None für ungültige Stufe."""
+        if level not in self._seconds:
+            return None
+        return round(self._seconds[level] / 3600.0, 3)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"seconds": {str(k): v for k, v in self._seconds.items()}}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | None) -> "LevelHoursTracker":
+        obj = cls()
+        if not d:
+            return obj
+        secs = d.get("seconds", {})
+        for level in (1, 2, 3, 4):
+            obj._seconds[level] = float(secs.get(str(level), 0.0))
+        return obj
+
+
 # ── Main analytics class ──────────────────────────────────────────────────────
 
 class KWLAnalytics:
@@ -577,6 +623,7 @@ class KWLAnalytics:
         # Trackers
         self._bypass = BypassTracker()
         self._night_cooling = NightCoolingTracker()
+        self._level_hours = LevelHoursTracker()
 
         # Last-computed values (updated on every poll, reset to None when ungated)
         self._season: str = "summer"
@@ -621,6 +668,9 @@ class KWLAnalytics:
             timestamp=snap.timestamp,
             poll_interval_s=poll_interval_s,
         )
+
+        # ── Level operating hours (self-counted, for flex/flat energy) ─────
+        self._level_hours.update(snap.current_level, poll_interval_s)
 
         # ── RPM ───────────────────────────────────────────────────────────
         self._last_rpm_ab = None
@@ -892,6 +942,11 @@ class KWLAnalytics:
     def season(self) -> str:
         return self._season
 
+    def level_hours(self, level: int) -> float | None:
+        """Selbst gezählte Betriebsstunden für eine Stufe (flex/flat).
+        Basis für die geschätzten Energiesensoren. None für ungültige Stufe."""
+        return self._level_hours.hours(level)
+
     @property
     def au_temp_ema(self) -> float | None:
         return round(self._au_ema, 2) if self._au_ema is not None else None
@@ -954,6 +1009,7 @@ class KWLAnalytics:
             "balance_ratio": self._balance_ratio.to_dict(),
             "bypass": self._bypass.to_dict(),
             "night_cooling": self._night_cooling.to_dict(),
+            "level_hours": self._level_hours.to_dict(),
         }
 
     @classmethod
@@ -977,4 +1033,5 @@ class KWLAnalytics:
         obj._balance_ratio = WelfordEMA.from_dict(d.get("balance_ratio"))
         obj._bypass = BypassTracker.from_dict(d.get("bypass"))
         obj._night_cooling = NightCoolingTracker.from_dict(d.get("night_cooling"))
+        obj._level_hours = LevelHoursTracker.from_dict(d.get("level_hours"))
         return obj

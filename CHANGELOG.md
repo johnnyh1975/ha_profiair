@@ -5,6 +5,47 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.0.7] – 2026-07
+
+### Geschätzte Energiesensoren für flex/flat
+
+- **Energieverbrauch pro Stufe + Gesamt für flex/flat** (`energy_level_1..4
+  (geschätzt)` und `energy_total (geschätzt)`). Anders als touch liefern
+  flex/flat keine Betriebsstunden pro Stufe über Modbus -- die Integration
+  zählt die Zeit je Stufe deshalb selbst mit (poll-basiert) und multipliziert
+  mit den konfigurierten Watt-Werten. Die Sensoren sind `TOTAL_INCREASING`
+  und damit für das HA Energy Dashboard geeignet. Standardmäßig deaktiviert.
+- **Ehrliche Kennzeichnung:** Es ist eine **Schätzung**, keine Messung -- die
+  Genauigkeit hängt am Poll-Intervall (Stufenwechsel zwischen zwei Polls
+  werden der zuletzt gesehenen Stufe zugerechnet). Deshalb „(geschätzt)" im
+  Namen und eigene Entity-Keys, getrennt von den gemessenen touch-Sensoren.
+- **Persistent:** Die Stufen-Zähler werden im Analytics-Store gespeichert und
+  überstehen Neustarts, damit die Energiesensoren nicht auf 0 zurückfallen.
+
+### 130 flat: reale Hardware-Validierung (Community, agmorpheus)
+
+- **T5-Raumtemperatur: Platzhalter 88 °C wird unterdrückt.** Das 130 flat hat
+  konstruktiv keinen Raumfühler und liefert dann exakt 88 °C. Dieser
+  Platzhalter wird jetzt als „nicht verfügbar" behandelt, statt einen
+  unplausiblen Messwert anzuzeigen (auf realer 130-flat-Hardware bestätigt).
+- **Gemessene Watt-Werte für das 130 flat** (16/21/33/44 W pro Stufe, per
+  Steckdosen-Messgerät ermittelt). Damit funktionieren sowohl die
+  Live-Leistungsanzeige der Fan-Entität als auch die neuen geschätzten
+  Energiesensoren out of the box.
+- **Register-Karte des 130 flat auf realer Hardware bestätigt.** Ein
+  vollständiger Register-Dump zeigte, dass Temperaturen, Lüfterdrehzahlen,
+  Filter, Bypass, Modus und Referenz-RPM mit den flex-Modellen übereinstimmen.
+  Die doku-basierte Implementierung hält.
+- **README korrigiert:** Nachtkühlungs-Analytik und Selbstlernen standen
+  fälschlich nur unter „touch"; sie laufen auf allen Modellen und stehen jetzt
+  korrekt unter „Alle Geräte". Raumtemperatur- und Leistungs-Beschreibung für
+  flex/flat präzisiert.
+
+Neue Tests: LevelHoursTracker (Akkumulation, Persistenz, Monotonie), geschätzte
+flex-Energiesensoren, T5-Sentinel, 130-flat-Watt-Defaults. Vollständige
+Suite: 517/517 grün.
+
+
 ## [2.0.6] – 2026-07
 
 ### profi-air 130 flat wird erkannt (Typ 27)

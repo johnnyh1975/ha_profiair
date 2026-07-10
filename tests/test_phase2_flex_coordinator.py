@@ -810,3 +810,44 @@ class TestRegisterDumpDiagnostic:
         ).read()
         assert "async_dump_all_registers" in src
         assert "register_dump" in src
+
+
+class TestT5NoSensorSentinel:
+    """T5 (Raumtemperatur) ist optional. Ohne Fühler -- z.B. beim 130 flat --
+    liefert das Gerät 0.0 oder exakt 88.0 °C. Beide müssen als None
+    (nicht verfügbar) behandelt werden, statt einen unplausiblen Wert zu zeigen.
+    Auf realer 130-flat-Hardware (agmorpheus) bestätigt: 88.0 °C."""
+
+    def test_sentinel_constant_is_88(self):
+        src = open(FLEX_COORD_PY).read()
+        assert "T5_NO_SENSOR_SENTINEL" in src
+        assert "88.0" in src
+
+    def test_t5_suppresses_88_sentinel(self):
+        """Der T5-Zweig muss den 88.0-Sentinel gegen None abfangen."""
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        tree = ast.parse(source)
+        build = None
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef):
+                for item in cls.body:
+                    if isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef)) and item.name == "_build_data":
+                        build = "\n".join(
+                            source.splitlines()[item.lineno - 1:item.end_lineno]
+                        )
+        assert build is not None
+        # T5 muss gegen den Sentinel geprüft werden
+        assert "T5_NO_SENSOR_SENTINEL" in build
+        assert "t5 = None" in build
+
+    def test_valid_t5_still_passes(self):
+        """Ein plausibler T5-Wert (z.B. 21 °C) darf NICHT unterdrückt werden --
+        die Unterdrückung gilt nur für 0.0 und 88.0."""
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        # Sicherstellen, dass nur die zwei Sentinels geprüft werden, nicht ein Bereich
+        idx = source.find("t5_raw == T5_NO_SENSOR_SENTINEL")
+        assert idx >= 0
+        block = source[idx-120:idx+60]
+        assert "== 0.0" in block  # nur exakte Sentinels, kein < / >

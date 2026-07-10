@@ -68,7 +68,8 @@ WATT_DEFAULTS: dict[str, dict[int, float | None]] = {
     MODEL_PROFI_AIR_250_FLEX: {1: None, 2: None, 3: None, 4: None},
     MODEL_PROFI_AIR_360_FLEX: {1: None, 2: None, 3: None, 4: None},
     MODEL_PROFI_AIR_180_FLAT: {1: None, 2: None, 3: None, 4: None},
-    MODEL_PROFI_AIR_130_FLAT: {1: None, 2: None, 3: None, 4: None},
+    # 130 flat: reale Messwerte (Community, agmorpheus) mit Steckdosen-Messgerät
+    MODEL_PROFI_AIR_130_FLAT: {1: 16.0, 2: 21.0, 3: 33.0, 4: 44.0},
 }
 
 # Maximale Gesamtleistung beider Lüfter (aus Datenblatt, ohne Defroster)
