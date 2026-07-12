@@ -539,6 +539,10 @@ SENSORS: tuple[KWLSensorDescription, ...] = (
     ),
     KWLSensorDescription(
         key="temp_room",
+        # force_update wie bei den uebrigen Temperaturen: der Recorder soll bei
+        # jedem Poll schreiben, auch wenn der Wert gleich bleibt (lueckenlose
+        # Historie). Fehlte hier bisher -- Inkonsistenz, von test_sensor.py gefangen.
+        force_update=True,
         name="Raumtemperatur",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
