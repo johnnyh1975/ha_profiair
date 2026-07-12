@@ -6,6 +6,9 @@ Basisklasse dient (vermeidet Metaclass-Konflikte bei class-Definitionen).
 """
 from __future__ import annotations
 import sys
+import types
+from dataclasses import dataclass
+from typing import Any
 from unittest.mock import MagicMock
 
 # ── Echte Basisklassen ────────────────────────────────────────────────────────
@@ -45,12 +48,57 @@ class _DataUpdateCoordinator:
 class _UpdateFailed(Exception): pass
 class _ConfigEntryAuthFailed(Exception): pass
 
+@dataclass(frozen=True, kw_only=True)
 class _EntityDescription:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    """Stub fuer HA's EntityDescription -- muss ein FROZEN KW-ONLY DATACLASS sein.
 
-class _Platform:
+    Die Integration deklariert ihre Description-Subklassen als
+    @dataclass(frozen=True, kw_only=True). Ist die Basis eine schlichte Klasse
+    (wie zuvor), erbt die Subklasse KEINE Felder, und ein Aufruf mit key=...,
+    name=... scheitert mit "unexpected keyword argument 'key'". Nur wenn die
+    Basis selbst ein Dataclass ist, werden ihre Felder vererbt.
+
+    Enthalten sind nur HA-Standardfelder; projekteigene Felder (value_fn,
+    supported_protocols, attrs_fn, cgi_path, ...) deklarieren die Subklassen
+    in der Integration selbst.
+    """
+    key: str = ""
+    name: Any = None
+    device_class: Any = None
+    state_class: Any = None
+    native_unit_of_measurement: Any = None
+    suggested_display_precision: Any = None
+    icon: Any = None
+    entity_category: Any = None
+    entity_registry_enabled_default: bool = True
+    translation_key: Any = None
+    options: Any = None
+    native_min_value: Any = None
+    native_max_value: Any = None
+    native_step: Any = None
+    mode: Any = None
+    force_update: bool = False
+
+class _AutoMemberMeta(type):
+    """Metaklasse fuer Enum-artige HA-Stubs (SensorDeviceClass, Platform, ...).
+
+    Die Integration greift auf viele Enum-Mitglieder zu (VOLTAGE, ENERGY,
+    POWER, DIAGNOSTIC, ...). Jedes einzeln im Stub zu pflegen ist Whack-a-Mole:
+    ein neuer device_class im Code laesst sonst Tests mit AttributeError
+    scheitern, obwohl fachlich nichts kaputt ist. Unbekannte Mitglieder loesen
+    sich daher selbst zu ihrem Namen auf; explizit definierte Mitglieder
+    behalten ihren Wert.
+    """
+
+    def __getattr__(cls, name: str):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        value = name
+        setattr(cls, name, value)
+        return value
+
+
+class _Platform(metaclass=_AutoMemberMeta):
     FAN = "fan"
     SENSOR = "sensor"
     BINARY_SENSOR = "binary_sensor"
@@ -58,30 +106,63 @@ class _Platform:
     SELECT = "select"
     BUTTON = "button"
 
-class _FanEntityFeature:
+class _FanEntityFeature(metaclass=_AutoMemberMeta):
     PRESET_MODE = 1
     SET_SPEED = 2
     TURN_ON = 4
     TURN_OFF = 8
 
-class _SensorStateClass:
+class _SensorStateClass(metaclass=_AutoMemberMeta):
     MEASUREMENT = "measurement"
 
-class _SensorDeviceClass:
+class _SensorDeviceClass(metaclass=_AutoMemberMeta):
     TEMPERATURE = "temperature"
     POWER = "power"
     ENERGY = "energy"
     HUMIDITY = "humidity"
 
-class _NumberMode:
+class _NumberMode(metaclass=_AutoMemberMeta):
     BOX = "box"
     SLIDER = "slider"
 
 # ── Module stubben ────────────────────────────────────────────────────────────
 
-def _stub(name: str) -> MagicMock:
-    m = MagicMock(name=name)
+class _StubModule(types.ModuleType):
+    """Echtes Modul-Objekt mit Auto-Attributen.
+
+    Warum nicht einfach MagicMock als Modul (wie zuvor)?
+    MagicMock funktioniert nur beim `import x as y`-Stil. Bei
+    `from x.y.z import Name` -- und genau so importieren die Integrations-
+    Module ihre HA-Basisklassen -- geht Pythons Import-Maschinerie an einem
+    MagicMock-Elternmodul vorbei und erzeugt frische Auto-Mocks, statt den in
+    sys.modules gepatchten Eintrag zu verwenden. Die Basisklassen werden dann
+    zu MagicMocks, was beim Klassen-Statement als "metaclass conflict" und
+    beim @dataclass als "Mock object has no attribute '__mro__'" knallt.
+
+    Ein echtes ModuleType-Objekt verhält sich für den Import korrekt. Das
+    __getattr__ hier (PEP 562) behält die Bequemlichkeit von MagicMock für
+    alle Namen, die nicht ausdrücklich gesetzt werden -- explizit gesetzte
+    Basisklassen bleiben echte Python-Klassen.
+    """
+
+    def __getattr__(self, name: str):
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        m = MagicMock(name=f"{self.__name__}.{name}")
+        setattr(self, name, m)
+        return m
+
+
+def _stub(name: str) -> _StubModule:
+    m = _StubModule(name)
+    m.__path__ = []  # als Paket behandelbar machen
     sys.modules[name] = m
+    # Am Elternmodul verankern, damit `from a.b import c` sauber aufloest.
+    if "." in name:
+        parent_name, _, child = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        if parent is not None:
+            setattr(parent, child, m)
     return m
 
 _MODS = [
@@ -95,6 +176,9 @@ _MODS = [
     "homeassistant.components.binary_sensor", "homeassistant.components.button",
     "homeassistant.components.select", "homeassistant.components.number",
     "homeassistant.exceptions", "homeassistant.util", "homeassistant.util.dt",
+    # Ergaenzt: werden von repairs.py / config_flow.py importiert.
+    "homeassistant.components.repairs", "homeassistant.helpers.issue_registry",
+    "homeassistant.helpers.selector",
 ]
 for _m in _MODS:
     if _m not in sys.modules:

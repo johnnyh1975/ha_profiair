@@ -9,6 +9,22 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ### CI-Pipeline (neu)
 
+- **Hassfest-Konformität: zwei Verstöße behoben.** Der neue Hassfest-Job hat
+  Fehler aufgedeckt, die vorher nie geprüft wurden:
+  - `manifest.json` enthielt einen `icon`-Key (`mdi:fan`). Der ist im Manifest
+    nicht erlaubt (Integrations-Icons gehören in `icons.json` bzw. ins
+    HA-brands-Repo) -- entfernt.
+  - `strings.json` (und beide Übersetzungen) enthielten unter
+    `options.step.init.data` einen toten `model_selection`-Eintrag, der ein
+    Dict statt eines Strings war. Der Key wird nirgends im Code verwendet --
+    entfernt.
+- **Bekannt und noch offen:** Hassfest beanstandet zusätzlich, dass die
+  State-Übersetzungsschlüssel der Select-Entitäten und der Fan-Preset-Modi
+  keine Slugs sind (`Manuell offen`, `Stufe 4 - Intensivlueftung`, ...).
+  Das zu korrigieren ändert die Entity-States und bricht damit
+  Nutzer-Automationen -- es ist bewusst einem Major-Release mit
+  Migrationshinweis vorbehalten und nicht Teil dieses Patches.
+
 - **HACS-Auslieferung auf `zip_release` umgestellt.** `hacs.json` setzt jetzt
   `zip_release: true` und `filename: ha-profiair.zip`. HACS lädt damit nicht
   mehr den Repo-Quellcode, sondern das fertige, in CI gebaute und

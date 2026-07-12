@@ -470,11 +470,7 @@
           "watt_level_2": "Stufe 2 – Reduziert (W)",
           "watt_level_3": "Stufe 3 – Nennlüftung (W)",
           "watt_level_4": "Stufe 4 – Intensivlüftung (W)",
-          "model": "Device model",
-          "model_selection": {
-            "profi_air_250": "profi-air 250 touch",
-            "profi_air_400": "profi-air 400 touch"
-          }
+          "model": "Device model"
         }
       }
     }
