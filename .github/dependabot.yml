@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # requirements-test-frozen.txt — the pinned test/dev dependencies. Weekly,
+  # not daily: this is test tooling, not runtime code shipped to users, so
+  # there is no urgency that would justify daily PR noise. When Dependabot
+  # opens a PR here, validate.yml's test job runs the full suite against the
+  # new pin before it can be merged — which is the whole point.
+  #
+  # No `labels:` key, deliberately: Dependabot requires a label to already
+  # exist in the repo before it can apply it, and a missing label makes the
+  # whole config error out. If you want categorisation, create the labels
+  # under Settings → Labels first, then add `labels: ["dependencies"]` here.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # The workflow files themselves (actions/checkout, actions/setup-python,
+  # hacs/action, home-assistant/actions, softprops/action-gh-release,
+  # github/codeql-action) — same reasoning, weekly.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
