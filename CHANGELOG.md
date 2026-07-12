@@ -29,6 +29,14 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
   Sechs neue Guard-Tests sichern den Packaging-Vertrag jetzt maschinell ab
   (Asset-Name, ZIP-Struktur, keine innere `hacs.json`), damit die bekannte
   Doppelverschachtelungs-Falle nicht auftreten kann.
+- **`pytest.ini` entfernt, Test-Konfiguration nach `pyproject.toml` verschoben.**
+  Beide Dateien parallel zu haben ist eine stille Falle: `pytest.ini` hat
+  Vorrang und macht jede `[tool.pytest.ini_options]`-Sektion in
+  `pyproject.toml` wirkungslos. Die zwei Einstellungen (`testpaths`,
+  `asyncio_mode`) entsprechen aktuell zwar den Defaults, bleiben aber
+  bewusst explizit -- `testpaths` verhindert, dass eine später irgendwo
+  abgelegte `test_*.py` versehentlich mitgesammelt wird, und pytest-asyncio
+  hat seinen Default-Modus schon einmal geändert.
 - **GitHub-Actions-Pipeline eingeführt.** `validate.yml` (HACS, Hassfest,
   Testsuite mit Coverage, Ruff-Lint, Übersetzungs-Vollständigkeit,
   Versions-Badge-Konsistenz, Markdown-Link-Prüfung), `codeql.yml`

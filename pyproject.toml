@@ -1,3 +1,20 @@
+[tool.pytest.ini_options]
+# Consolidated here from a separate pytest.ini, which was deleted. Having
+# both files is a quiet footgun: pytest.ini takes precedence and silently
+# makes any [tool.pytest.ini_options] here dead config.
+#
+# Both settings below are currently the same as pytest's/pytest-asyncio's
+# own defaults, so the suite passes without them — they are kept explicit
+# on purpose:
+#   testpaths    — pins collection to tests/. Without it, a stray test_*.py
+#                  added elsewhere later (scripts/, an examples folder)
+#                  would silently get collected by a bare `pytest`.
+#   asyncio_mode — pytest-asyncio has changed its default mode before;
+#                  stating it means a future default flip can't silently
+#                  change how this suite runs.
+testpaths = ["tests"]
+asyncio_mode = "strict"
+
 [tool.ruff]
 # Only the integration source is linted in CI. Tests are intentionally
 # excluded: they have their own, much noisier patterns (AST-source
