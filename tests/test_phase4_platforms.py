@@ -16,7 +16,14 @@ Abgedeckte Anforderungen:
 from __future__ import annotations
 import ast
 
-BASE = "/home/claude/kwl_src/custom_components/kwl_fraenkische/"
+# Repo-Wurzel aus __file__ ableiten -- NIEMALS absolute Pfade hart kodieren:
+# die laufen nur auf genau einem Rechner und brechen in CI.
+from pathlib import Path as _Path
+_REPO = _Path(__file__).resolve().parent.parent
+_CC = _REPO / "custom_components" / "kwl_fraenkische"
+
+
+BASE = str(_CC) + "/"
 
 
 def _src(filename: str) -> str:

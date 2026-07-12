@@ -19,6 +19,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
 
+# Repo-Wurzel aus __file__ ableiten -- NIEMALS absolute Pfade hart kodieren:
+# die laufen nur auf genau einem Rechner und brechen in CI.
+from pathlib import Path as _Path
+_REPO = _Path(__file__).resolve().parent.parent
+_CC = _REPO / "custom_components" / "kwl_fraenkische"
+
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -403,7 +410,7 @@ class TestDerivedProperties:
 # ── Tests: Poll-Divisor Logik (via Source-Analyse) ───────────────────────────
 
 FLEX_COORD_PY = (
-    "/home/claude/kwl_src/custom_components/kwl_fraenkische/flex_coordinator.py"
+    str(_CC / "flex_coordinator.py")
 )
 
 

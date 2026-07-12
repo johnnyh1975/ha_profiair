@@ -21,8 +21,15 @@ import ast
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Repo-Wurzel aus __file__ ableiten -- NIEMALS absolute Pfade hart kodieren:
+# die laufen nur auf genau einem Rechner und brechen in CI.
+from pathlib import Path as _Path
+_REPO = _Path(__file__).resolve().parent.parent
+_CC = _REPO / "custom_components" / "kwl_fraenkische"
+
+
 CONFIG_FLOW_PY = (
-    "/home/claude/kwl_src/custom_components/kwl_fraenkische/config_flow.py"
+    str(_CC / "config_flow.py")
 )
 
 
@@ -82,8 +89,8 @@ class TestTimeoutErrorHandling:
     async def test_fetch_device_info_returns_cannot_connect_on_timeout(self):
         """Echter Funktionstest: TimeoutError während session.get() → 'cannot_connect', kein Crash."""
         import sys
-        sys.path.insert(0, "/home/claude/kwl_src")
-        exec(open("/home/claude/kwl_src/tests/conftest.py").read())
+        sys.path.insert(0, str(_REPO))
+        exec(open(str(_REPO / "tests" / "conftest.py")).read())
 
         from unittest.mock import AsyncMock, MagicMock, patch
         from custom_components.kwl_fraenkische.config_flow import _fetch_device_info
@@ -296,8 +303,8 @@ class TestProbeModbus:
     async def test_returns_none_when_connect_fails(self):
         """Verbindungsfehler → None."""
         import sys
-        sys.path.insert(0, "/home/claude/kwl_src")
-        exec(open("/home/claude/kwl_src/tests/conftest.py").read())
+        sys.path.insert(0, str(_REPO))
+        exec(open(str(_REPO / "tests" / "conftest.py")).read())
 
         from pymodbus.client import AsyncModbusTcpClient
         with patch.object(AsyncModbusTcpClient, "connect", new_callable=AsyncMock, return_value=False):
@@ -508,7 +515,7 @@ class TestModbusNoResponseHandling:
 
     def test_modbus_no_response_error_in_all_translation_files(self):
         import json
-        base = "/home/claude/kwl_src/custom_components/kwl_fraenkische/"
+        base = str(_CC) + "/"
         for fname in ("strings.json", "translations/de.json", "translations/en.json"):
             data = json.loads(open(base + fname).read())
             assert "modbus_no_response" in data["config"]["error"], (
@@ -517,7 +524,7 @@ class TestModbusNoResponseHandling:
 
     def test_modbus_no_response_message_nonempty(self):
         import json
-        base = "/home/claude/kwl_src/custom_components/kwl_fraenkische/"
+        base = str(_CC) + "/"
         for fname in ("strings.json", "translations/de.json", "translations/en.json"):
             data = json.loads(open(base + fname).read())
             msg = data["config"]["error"]["modbus_no_response"]
