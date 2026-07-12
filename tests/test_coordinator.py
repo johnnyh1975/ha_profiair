@@ -419,10 +419,15 @@ class TestDefectCounters:
         })
         assert d.bypass_leaking is False
 
-    def test_motor_asymmetry_boundary_exactly_25pct(self):
-        """Genau 25% Asymmetrie -- noch kein Alarm (> 25% required)."""
-        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1500"})
-        # |2000-1500|/2000 = 0.25 -- nicht > 0.25
+    def test_motor_asymmetry_boundary_exactly_22pct(self):
+        """Genau 22% Asymmetrie -- noch kein Alarm (> 22% erforderlich).
+
+        HINWEIS: Die Schwelle lag urspruenglich bei 25% und wurde nach
+        Rueckmeldungen von echter Hardware auf 22% gesenkt -- 25% war zu
+        unempfindlich, echter Lagerverschleiss wurde zu spaet erkannt.
+        """
+        d = KWLData({"MoStZlUm": "2000", "MoStAlUm": "1560"})
+        # |2000-1560|/2000 = 0.22 -- nicht > 0.22
         assert d.motor_asymmetry is False
 
     def test_motor_asymmetry_just_above_threshold(self):
@@ -460,26 +465,33 @@ class TestMigrateEntry:
 
 
 class TestEtaGuard:
-    """Tests fuer Waermerueckgewinnungsgrad eta-Berechnung mit reduziertem Guard."""
+    """Waermerueckgewinnungsgrad eta -- Guard gegen Messrauschen.
 
-    def test_eta_computed_when_delta_above_1_5(self):
-        """Delta 2K -- sollte eta liefern (Guard bei 1.5K)."""
-        d = KWLData({"abl0": "22.0", "zul0": "20.5", "aul0": "20.0"})
+    HINWEIS zur Schwelle: Diese Tests forderten urspruenglich einen Guard bei
+    1.5 K. Der wurde spaeter bewusst auf 3 K angehoben -- bei kleinem
+    Temperaturdelta dominiert das Sensorrauschen und eta wird unbrauchbar
+    (Werte springen oder ueberschreiten 100 %). Die Tests sind entsprechend
+    auf die aktuelle Schwelle nachgezogen; die Grenzfall-Logik bleibt gleich.
+    """
+
+    def test_eta_computed_when_delta_above_guard(self):
+        """Delta 4K -- deutlich ueber dem 3K-Guard, eta wird berechnet."""
+        d = KWLData({"abl0": "24.0", "zul0": "22.0", "aul0": "20.0"})
         eta = d.heat_recovery_efficiency
         assert eta is not None
         assert eta > 0
 
-    def test_eta_at_boundary_1_5_returns_value(self):
-        """Delta exakt 1.5K -- Guard ist < 1.5, also wird Wert berechnet."""
-        d = KWLData({"abl0": "21.5", "zul0": "20.5", "aul0": "20.0"})
-        # delta = 21.5 - 20.0 = 1.5 -- nicht < 1.5, also wird eta berechnet
+    def test_eta_at_boundary_3_returns_value(self):
+        """Delta exakt 3K -- Guard ist < 3, also wird der Wert noch berechnet."""
+        d = KWLData({"abl0": "23.0", "zul0": "21.0", "aul0": "20.0"})
+        # delta = 23.0 - 20.0 = 3.0 -- nicht < 3, also wird eta berechnet
         eta = d.heat_recovery_efficiency
         assert eta is not None
 
-    def test_eta_none_when_delta_below_1_5(self):
-        """Delta 1.4K -- unter Guard-Schwelle, None."""
-        d = KWLData({"abl0": "21.4", "zul0": "20.5", "aul0": "20.0"})
-        # delta = 21.4 - 20.0 = 1.4 < 1.5, also None
+    def test_eta_none_when_delta_below_guard(self):
+        """Delta 2.9K -- unter der 3K-Guard-Schwelle, daher None."""
+        d = KWLData({"abl0": "22.9", "zul0": "21.0", "aul0": "20.0"})
+        # delta = 22.9 - 20.0 = 2.9 < 3, also None
         assert d.heat_recovery_efficiency is None
 
     def test_eta_none_when_delta_below_1_5(self):
@@ -575,6 +587,7 @@ class TestBinaryBinarySensorDescriptions:
     def test_value_functions_return_bool(self):
         """Alle value_fn der Binary Sensoren geben bool oder None zurueck."""
         from kwl_fraenkische.binary_sensor import BINARY_SENSORS
+        from kwl_fraenkische.const import PROTOCOL_HTTP
         d = KWLData({
             "filter0": "Filter ersetzt",
             "safety": "Nicht aktiv",
@@ -586,6 +599,13 @@ class TestBinaryBinarySensorDescriptions:
             "MoStZlUm": "2291", "MoStAlUm": "1953",
         })
         for desc in BINARY_SENSORS:
+            # Modbus-only-Sensoren bekommen in der Produktion nie ein KWLData
+            # (sie greifen auf flex-eigene Attribute wie alarm_code zu), daher
+            # hier ueberspringen -- sonst wuerde man eine Situation testen, die
+            # es nicht gibt.
+            protos = getattr(desc, "supported_protocols", None)
+            if protos and PROTOCOL_HTTP not in protos:
+                continue
             result = desc.value_fn(d)
             assert isinstance(result, (bool, type(None))), \
                 f"{desc.key}.value_fn returned {type(result)}"

@@ -59,10 +59,24 @@ class TestSensorDescriptions:
 
 
     def test_value_functions_dont_crash(self, sample_xml):
+        """Kein value_fn darf crashen -- geprueft mit touch-Daten (KWLData).
+
+        Wichtig: nur Sensoren pruefen, die HTTP/touch ueberhaupt unterstuetzen.
+        Modbus-only-Sensoren (flex/flat) bekommen in der Produktion NIE ein
+        KWLData, sondern immer ein KWLFlexData; sie greifen entsprechend auf
+        flex-eigene Attribute zu (alarm_code, voc_ppm, temp_room, ...). Sie hier
+        trotzdem mit KWLData zu fuettern wuerde eine Situation testen, die es
+        nicht gibt -- und wuerde dazu verleiten, den Produktivcode mit
+        getattr(...)-Fallbacks zu verwaessern, die echte Tippfehler still
+        verschlucken."""
         from kwl_fraenkische.sensor import SENSORS
         from kwl_fraenkische.coordinator import KWLData, _parse_xml
+        from kwl_fraenkische.const import PROTOCOL_HTTP
         data = KWLData(_parse_xml(sample_xml))
         for sensor in SENSORS:
+            protos = getattr(sensor, "supported_protocols", None)
+            if protos and PROTOCOL_HTTP not in protos:
+                continue  # Modbus-only -- bekommt nie KWLData
             try:
                 sensor.value_fn(data)
             except Exception as e:

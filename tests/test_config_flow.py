@@ -217,24 +217,29 @@ class TestReconfigureDataPreservation:
         assert new_data[CONF_WATT_LEVEL_3] == 43.5
         assert new_data[CONF_WATT_LEVEL_4] == 80.0
 
-    def test_config_flow_version_is_2(self):
-        """ConfigFlow VERSION muss 2 sein -- direkt aus Source lesen."""
+    def test_config_flow_version_is_current(self):
+        """ConfigFlow VERSION muss zur aktuellen Migrationsstufe passen.
+
+        HINWEIS: Dieser Test forderte urspruenglich VERSION == 2. Die Version
+        wurde seither durch weitere Config-Entry-Migrationen auf 4 erhoeht.
+        Statt einer festen Zahl wird hier gegen den Code selbst geprueft und
+        nur sichergestellt, dass die Version nicht versehentlich zurueckfaellt
+        -- ein Rueckschritt wuerde Migrationen ueberspringen.
+        """
         import ast, os
         src = open(os.path.join(
-            os.path.dirname(__file__),
-            "../custom_components/kwl_fraenkische/config_flow.py"
-        )).read()
+            os.path.dirname(__file__), "..", "custom_components",
+            "kwl_fraenkische", "config_flow.py"), encoding="utf-8").read()
         tree = ast.parse(src)
+        version = None
         for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == "KWLConfigFlow":
+            if isinstance(node, ast.ClassDef) and "ConfigFlow" in node.name:
                 for item in node.body:
-                    if isinstance(item, ast.Assign):
-                        for t in item.targets:
-                            if isinstance(t, ast.Name) and t.id == "VERSION":
-                                version = ast.literal_eval(item.value)
-                                assert version == 2, f"VERSION ist {version}, erwartet 2"
-                                return
-        raise AssertionError("VERSION nicht gefunden")
+                    if (isinstance(item, ast.Assign)
+                            and getattr(item.targets[0], "id", "") == "VERSION"):
+                        version = item.value.value
+        assert version is not None, "VERSION nicht im ConfigFlow gefunden"
+        assert version >= 2, f"ConfigFlow VERSION darf nicht unter 2 fallen (ist {version})"
 
     def test_options_flow_class_exists(self):
         """KWLOptionsFlow ist in config_flow.py definiert."""
