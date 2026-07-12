@@ -85,3 +85,48 @@ class TestHacsZipReleaseContract:
         assert 'grep -qx "manifest.json"' in wf
         assert 'grep -q "custom_components"' in wf
         assert 'grep -qx "hacs.json"' in wf
+
+
+class TestHacsJsonSchema:
+    """hacs.json darf nur HACS-eigene Keys enthalten.
+
+    Realer CI-Fehler: hacs.json trug ein `iot_class: local_polling`. Das ist
+    ein manifest.json-Key -- HACS lehnt ihn mit "extra keys not allowed" ab.
+    Er stand ohnehin (korrekt) im manifest.json, war in hacs.json also eine
+    Dublette am falschen Ort.
+    """
+
+    # Von HACS erlaubte Keys (https://hacs.xyz/docs/publish/include)
+    ALLOWED = {
+        "name", "content_in_root", "country", "filename", "hacs",
+        "hide_default_branch", "homeassistant", "persistent_directory",
+        "render_readme", "zip_release",
+    }
+
+    def test_only_allowed_keys(self):
+        d = json.loads(HACS_JSON.read_text(encoding="utf-8"))
+        extra = set(d) - self.ALLOWED
+        assert not extra, (
+            f"hacs.json enthält Keys, die HACS nicht erlaubt: {sorted(extra)}. "
+            f"Erlaubt sind nur: {sorted(self.ALLOWED)}"
+        )
+
+    def test_iot_class_lives_in_manifest_not_hacs_json(self):
+        """iot_class gehört ins manifest.json, nicht in hacs.json."""
+        hacs = json.loads(HACS_JSON.read_text(encoding="utf-8"))
+        assert "iot_class" not in hacs
+
+        manifest = json.loads(
+            (INTEGRATION_DIR / "manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest.get("iot_class"), "iot_class fehlt im manifest.json"
+
+    def test_manifest_has_no_disallowed_icon_key(self):
+        """Realer hassfest-Fehler: `icon` ist im manifest.json nicht erlaubt
+        (Integrations-Icons gehören nach icons.json bzw. ins brands-Repo)."""
+        manifest = json.loads(
+            (INTEGRATION_DIR / "manifest.json").read_text(encoding="utf-8")
+        )
+        assert "icon" not in manifest, (
+            "manifest.json darf keinen 'icon'-Key haben -- hassfest lehnt das ab"
+        )

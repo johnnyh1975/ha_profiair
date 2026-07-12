@@ -9,6 +9,11 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ### CI-Pipeline (neu)
 
+- **HACS-Konformität: `iot_class` aus `hacs.json` entfernt.** Die
+  HACS-Validierung lehnt den Key ab („extra keys not allowed") -- er gehört
+  ins `manifest.json`, wo er ohnehin schon korrekt stand. In `hacs.json` war
+  er eine Dublette am falschen Ort. Ein Guard-Test prüft jetzt, dass
+  `hacs.json` ausschliesslich von HACS erlaubte Keys enthält.
 - **Hassfest-Konformität: zwei Verstöße behoben.** Der neue Hassfest-Job hat
   Fehler aufgedeckt, die vorher nie geprüft wurden:
   - `manifest.json` enthielt einen `icon`-Key (`mdi:fan`). Der ist im Manifest
