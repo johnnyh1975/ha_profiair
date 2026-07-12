@@ -1,17 +1,17 @@
 {
   "domain": "kwl_fraenkische",
   "name": "profi-air (Fränkische Rohrwerke)",
-  "version": "2.0.7",
-  "config_flow": true,
-  "documentation": "https://github.com/johnnyh1975/ha-profiair",
-  "issue_tracker": "https://github.com/johnnyh1975/ha-profiair/issues",
-  "requirements": [
-    "pymodbus>=3.10.0"
-  ],
-  "dependencies": [],
   "codeowners": [
     "@johnnyh1975"
   ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/johnnyh1975/ha-profiair",
   "iot_class": "local_polling",
-  "quality_scale": "platinum"
+  "issue_tracker": "https://github.com/johnnyh1975/ha-profiair/issues",
+  "quality_scale": "platinum",
+  "requirements": [
+    "pymodbus>=3.10.0"
+  ],
+  "version": "2.0.7"
 }
