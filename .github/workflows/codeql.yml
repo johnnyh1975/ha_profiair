@@ -1,0 +1,52 @@
+name: CodeQL
+
+# Separate from validate.yml deliberately — CodeQL's analysis step takes
+# several minutes and shouldn't slow down the fast hacs/hassfest/test/lint
+# feedback loop on every push. The weekly schedule catches drift from
+# dependency updates even with no code changes; push/PR still covers actual
+# code changes promptly.
+#
+# Rationale, honestly stated: this integration handles no cloud credentials
+# and is not internet-facing — it polls a device on the local network. The
+# security surface is therefore modest. What it does do is parse input from
+# that device: XML from the touch units' HTTP endpoint, and raw binary
+# register data from the flex/flat units over Modbus (struct unpacking,
+# byte-order handling, index arithmetic). Parsing code of that shape is
+# where a static scan has some genuine value — the device-type byte bug in
+# v2.0.5 was exactly a misread-byte-offset class of mistake, even if that
+# particular one was a correctness bug rather than a security one.
+#
+# So: kept, because it is cheap and occasionally useful — not because this
+# is high-risk code. If it ever produces nothing but noise, dropping it is
+# a reasonable call.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 3 * * 1"  # Mondays, offset from validate.yml's nightly run
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4

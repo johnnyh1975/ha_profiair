@@ -1,0 +1,169 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+# Cancels superseded runs on rapid successive pushes to the same PR/branch,
+# so CI minutes aren't spent on runs whose result no longer matters by the
+# time they'd finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hacs:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  hassfest:
+    name: Hassfest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-test-frozen.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test-frozen.txt
+
+      - name: Run full test suite with coverage
+        run: |
+          python -m pytest tests/ --cov=custom_components/kwl_fraenkische \
+            --cov-report=term-missing --cov-report=xml -q
+
+      # No coverage threshold/gate here — and for this project the number
+      # needs a warning label, not just "no baseline yet".
+      #
+      # The suite is deliberately AST/source-based: Home Assistant cannot be
+      # instantiated in this test environment, so the tests parse and inspect
+      # the source text of the platform modules (sensor.py, fan.py, select.py,
+      # number.py, ...) rather than importing and executing them. Coverage
+      # measures *executed* lines, so those modules report 0% while in fact
+      # being extensively tested — the total (~35%) therefore says very little
+      # about how well tested this codebase is.
+      #
+      # Keeping the artifact anyway: it is free, and it becomes a genuinely
+      # useful signal the moment real runtime tests are added. But do NOT put
+      # a threshold on this number as it stands — it would be gating on a
+      # metric that does not measure what it appears to measure.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      # F = Pyflakes only — see pyproject.toml's [tool.ruff.lint] for why,
+      # and for the list of 27 real issues the first pass found and fixed
+      # (unused imports, shadowed re-imports, one unused local). The source
+      # is currently Pyflakes-clean with zero suppressions, so any new
+      # finding here is a genuinely new defect.
+      - name: Run ruff check
+        run: ruff check .
+
+  translations:
+    name: Translation Completeness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # strings.json vs. translations/de.json + en.json. Currently 329 keys,
+      # all three in sync. Catches the classic drift of shipping a new
+      # entity's translated name without adding it to strings.json.
+      - name: Check strings.json vs. all translations/*.json
+        run: python3 scripts/check_translations.py
+
+  version-badge:
+    name: Version Badge Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Earned its place immediately: when CI was added, the README badge
+      # said 2.0.2 while manifest.json said 2.0.7 — five releases of silent
+      # drift. Runs on every push to main, so it can't happen again between
+      # releases (release.yml's manifest-vs-tag check is a different,
+      # narrower check that only fires at release time).
+      - name: Check README badge vs. manifest.json
+        run: python3 scripts/check_version_badge.py
+
+  markdown-links:
+    name: Markdown Link Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Hard-failing (no continue-on-error), unlike the project this script
+      # came from: that repo had several emoji/em-dash heading anchors the
+      # script's slugify() couldn't reliably match. Against this repo's
+      # README + docs/ it produces exactly one finding — a link to LICENSE —
+      # and no anchor false positives, so a red job here means a genuinely
+      # broken link.
+      - name: Check relative markdown links
+        run: python3 scripts/check_markdown_links.py

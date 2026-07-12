@@ -1,1 +1,179 @@
+name: Release
 
+# Two ways to run this:
+# 1. Push a tag matching v*.*.* (e.g. `git tag v2.0.8 && git push --tags`) — runs automatically.
+# 2. Actions tab → Release → "Run workflow" → enter a tag manually. Useful for a
+#    safe first test: use a throwaway tag like v0.0.1-test, then delete the
+#    resulting release + tag afterwards from the Releases page.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to package and release (e.g. v2.0.8). Use a throwaway tag like v0.0.1-test for a safe test run."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${TAG} -> Version: ${VERSION}"
+
+      - name: Validate manifest.json version matches tag
+        run: |
+          MANIFEST_VERSION=$(python3 -c "import json; print(json.load(open('custom_components/kwl_fraenkische/manifest.json'))['version'])")
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::manifest.json version ($MANIFEST_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $MANIFEST_VERSION"
+
+      # Zero-failure-before-packaging as a pipeline gate, not a convention
+      # someone has to remember. Placed early — right after the cheap
+      # version-string check, before any packaging work. Same full-suite
+      # invocation as validate.yml's test job, deliberately: the PR gate and
+      # the release gate should never silently test different things.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-test-frozen.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test-frozen.txt
+
+      - name: Run full test suite (release gate — must pass before packaging)
+        run: python -m pytest tests/ -q
+
+      - name: Prepare release notes
+        id: notes
+        run: |
+          NOTES_FILE="release-notes/${{ steps.version.outputs.tag }}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No $NOTES_FILE found — release will be created without a notes body. Commit it before tagging next time."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build HACS-install ZIP
+        # CRITICAL — this is the zip_release layout, and getting it wrong is
+        # a known footgun:
+        #
+        # hacs.json sets `"zip_release": true` and `"filename":
+        # "ha-profiair.zip"`. HACS therefore downloads THIS asset from the
+        # release and extracts its ENTIRE content directly into the user's
+        # custom_components/kwl_fraenkische/ — with NO path stripping.
+        # (Unlike the non-zip_release path, which downloads the repo and
+        # strips the custom_components/<domain> prefix itself.)
+        #
+        # So the zip root must contain the integration's BARE files
+        # (__init__.py, manifest.json, translations/, brand/, ...) directly —
+        # NOT wrapped in a custom_components/kwl_fraenkische/ folder. Wrapping
+        # it produces custom_components/kwl_fraenkische/custom_components/
+        # kwl_fraenkische/... on every user's system.
+        #
+        # The asset name must stay EXACTLY "ha-profiair.zip" and must NOT
+        # carry the version: HACS looks for that literal filename in each
+        # release. Renaming it here without updating hacs.json breaks every
+        # install and update.
+        #
+        # hacs.json itself is deliberately NOT in the zip: HACS reads it from
+        # the repo root via the GitHub API, never from this archive. (The
+        # duplicate copy that used to sit inside custom_components/
+        # kwl_fraenkische/ was removed for exactly this reason — it would
+        # have been packaged straight into the zip.)
+        run: |
+          mkdir -p /tmp/hacs-package
+          cp -r custom_components/kwl_fraenkische/. /tmp/hacs-package/
+          cd /tmp/hacs-package
+          zip -r "${GITHUB_WORKSPACE}/ha-profiair.zip" .
+
+      - name: Validate HACS ZIP structure
+        # Makes the three rules from the comment above machine-checked, so a
+        # future edit to the packaging step can't silently ship a broken zip
+        # to every HACS user.
+        run: |
+          echo "Checking ha-profiair.zip structure..."
+          FILE_LIST=$(unzip -l ha-profiair.zip | awk 'NR>3 {print $4}' | grep -v '^$')
+
+          if ! echo "$FILE_LIST" | grep -qx "manifest.json"; then
+            echo "::error::manifest.json not found at the zip root — is custom_components/kwl_fraenkische/ wrapped instead of flattened? With zip_release, HACS extracts this archive directly into the integration folder, so the bare files must be at the root."
+            echo "$FILE_LIST"
+            exit 1
+          fi
+
+          if echo "$FILE_LIST" | grep -q "custom_components"; then
+            echo "::error::Found a 'custom_components' path inside the zip — this is the doubled-nesting bug (custom_components/kwl_fraenkische/custom_components/kwl_fraenkische/...). The zip must contain the bare files of custom_components/kwl_fraenkische/, not the folder itself."
+            echo "$FILE_LIST" | grep "custom_components"
+            exit 1
+          fi
+
+          if echo "$FILE_LIST" | grep -qx "hacs.json"; then
+            echo "::error::hacs.json found inside the zip — it must NOT be included; HACS reads it from the repo root via the GitHub API, never from this archive."
+            exit 1
+          fi
+
+          echo "ha-profiair.zip structure OK: manifest.json at root, no custom_components/ wrapper, no hacs.json."
+
+      - name: Build full-review ZIP
+        # Not read by HACS. Serves two purposes: a complete snapshot for
+        # review/archival, and a manual-install option — it keeps the
+        # custom_components/ structure, so it can be unzipped straight into
+        # an HA config folder by anyone not using HACS.
+        run: |
+          mkdir -p /tmp/full-package
+          cp -r custom_components /tmp/full-package/
+          cp -r tests /tmp/full-package/
+          cp -r docs /tmp/full-package/
+          cp -r scripts /tmp/full-package/
+          cp -r .github /tmp/full-package/
+          cp hacs.json README.md CHANGELOG.md pyproject.toml /tmp/full-package/
+          cp requirements-test-frozen.txt /tmp/full-package/
+          if [ "${{ steps.notes.outputs.found }}" = "true" ]; then
+            cp "${{ steps.notes.outputs.path }}" "/tmp/full-package/RELEASE_NOTES_${{ steps.version.outputs.tag }}.md"
+          fi
+          cd /tmp/full-package
+          zip -r "${GITHUB_WORKSPACE}/ha-profiair-${{ steps.version.outputs.tag }}-full.zip" .
+
+      - name: Create GitHub Release with assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.found == 'true' && steps.notes.outputs.path || '' }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, 'b') || contains(steps.version.outputs.tag, 'rc') }}
+          # ha-profiair.zip MUST be attached to every release and MUST keep
+          # this exact name — hacs.json's `filename` points at it. A release
+          # without this asset cannot be installed or updated through HACS.
+          files: |
+            ha-profiair.zip
+            ha-profiair-${{ steps.version.outputs.tag }}-full.zip
