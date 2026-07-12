@@ -1,0 +1,23 @@
+# Pinned test dependencies for CI.
+#
+# Determined empirically by running the suite in a clean venv and adding
+# only what it actually needs — not by copying a generic HA test stack.
+# tests/conftest.py stubs most of Home Assistant itself, but the real
+# packages below are still required:
+#
+#   pytest, pytest-asyncio  — the suite; pytest.ini sets asyncio_mode=strict
+#   pytest-cov              — coverage reporting in the CI test job
+#   pymodbus                — imported directly by the flex/config-flow tests
+#   aiohttp                 — imported via the touch (HTTP) coordinator path
+#   homeassistant           — a handful of tests still import the real package
+#                             despite conftest's stubs
+#
+# Pins are exact so a CI run is reproducible. Dependabot watches this file
+# weekly (see .github/dependabot.yml) and will open a PR when any of these
+# has an update — the full suite then runs against it before merge.
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pymodbus==3.13.1
+aiohttp==3.11.11
+homeassistant==2025.1.4

@@ -1,0 +1,31 @@
+[tool.ruff]
+# Only the integration source is linted in CI. Tests are intentionally
+# excluded: they have their own, much noisier patterns (AST-source
+# inspection, stub modules, fixtures) that would need a separate pass to
+# evaluate properly. Scope here is Pyflakes-clean production code, not a
+# project-wide lint rollout.
+include = ["custom_components/kwl_fraenkische/*.py"]
+
+[tool.ruff.lint]
+# F = Pyflakes rule family — deliberately the ONLY rule set enabled.
+# Pyflakes finds real defects (unused imports, shadowed names, unused
+# locals) without touching formatting or style. Enabling the E-series or
+# ruff format would mean a project-wide style pass, which is a separate
+# and much larger decision — not something to bundle into adding CI.
+#
+# The initial pass over this codebase found 27 real issues, all fixed
+# rather than suppressed:
+#   - 23x F401 genuinely unused imports (DOMAIN, ENDPOINT_*,
+#     KWLCapabilities, typing.cast, KWLConfigEntry) — removed
+#   - 3x F811 local re-imports shadowing module-level ones
+#     (async_track_time_interval, RPM_DEFAULTS x2) — locals removed
+#   - 1x F841 hal_right read from the A/B-switch register but never
+#     used — now included in the setup log line, so the raw values are
+#     visible when debugging a swapped supply/extract assignment
+select = ["F"]
+
+# No per-file or blanket ignores, deliberately. There is currently nothing
+# to suppress: the codebase is Pyflakes-clean. If a genuinely intentional
+# exception ever appears (a facade re-export, a TYPE_CHECKING forward
+# reference), annotate it inline with `# noqa: F401` plus a one-line
+# reason at the exact line — not hidden in this config file.

@@ -10,7 +10,6 @@ from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
-from . import KWLConfigEntry
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)

@@ -28,8 +28,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PROTOCOL, DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA, LEVEL_TO_WATT, PROTOCOL_HTTP, PROTOCOL_MODBUS
-from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
+from .const import CONF_PROTOCOL, LEVEL_TO_WATT, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .coordinator import KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 0
 

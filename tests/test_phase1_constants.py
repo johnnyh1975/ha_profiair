@@ -168,12 +168,24 @@ class TestModelDisplay:
         for model, name in c.MODEL_DISPLAY.items():
             assert isinstance(name, str) and name, f"Leerer Name für {model}"
 
-    def test_180_flat_marked_experimental(self):
+    def test_experimental_markers_match_validation_status(self):
+        """Der '(experimentell)'-Marker im Display-Namen muss der realen
+        Validierung entsprechen: nur-Doku-Modelle (250 flex, 180 flat) sind
+        experimentell; auf Hardware bestätigte (360 flex, 130 flat) nicht."""
         c = _const()
-        name = c.MODEL_DISPLAY[c.MODEL_PROFI_AIR_180_FLAT]
-        assert "experimentell" in name.lower(), (
-            "180 flat Display-Name sollte 'experimentell' enthalten"
-        )
+        experimental = [c.MODEL_PROFI_AIR_250_FLEX, c.MODEL_PROFI_AIR_180_FLAT]
+        validated = [c.MODEL_PROFI_AIR_360_FLEX, c.MODEL_PROFI_AIR_130_FLAT]
+        for model in experimental:
+            name = c.MODEL_DISPLAY[model]
+            assert "experimentell" in name.lower(), (
+                f"{model} ist nur doku-basiert und sollte 'experimentell' tragen"
+            )
+        for model in validated:
+            name = c.MODEL_DISPLAY[model]
+            assert "experimentell" not in name.lower(), (
+                f"{model} ist auf Hardware bestätigt und sollte NICHT "
+                f"'experimentell' tragen"
+            )
 
 
 # ── Tests: WATT_DEFAULTS ─────────────────────────────────────────────────────

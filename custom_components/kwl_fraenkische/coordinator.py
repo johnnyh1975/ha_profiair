@@ -38,7 +38,6 @@ from .const import (
     MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
     REQUIRED_XML_TAGS,
     RPM_DEFAULTS,
-    VOLUMENSTROM_REF,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -660,7 +659,6 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
 
     async def async_setup(self) -> None:
         """Wird nach dem ersten erfolgreichen Datenabruf aufgerufen."""
-        from homeassistant.helpers.event import async_track_time_interval
         from datetime import timedelta
 
         # Analytics persistenter Speicher (pro Config Entry)
@@ -956,7 +954,6 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         Reines P ∝ n³ würde Stufe 1 um 72 % unterschätzen — nicht verwenden.
         Gibt (P_base, k_aero) zurück.
         """
-        from .const import RPM_DEFAULTS
         rpm_ref = self.rpm_reference_stufe4
 
         # x_s = (RPM_s / RPM_ref)³  — RPM aus Analytics-Baseline oder Standardwerten
@@ -1002,7 +999,6 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
             return None
 
         # RPM-Werte für jede Stufe sammeln
-        from .const import RPM_DEFAULTS
         rpm_ref = self.rpm_reference_stufe4
         rpm: dict[int, float] = {}
         for level in range(1, 5):

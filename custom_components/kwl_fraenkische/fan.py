@@ -1,7 +1,7 @@
 """Fan-Entity fuer die KWL-Lüftungsanlage."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from . import KWLConfigEntry
@@ -12,7 +12,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import KWLCoordinator
 from .flex_coordinator import KWLFlexCoordinator
 

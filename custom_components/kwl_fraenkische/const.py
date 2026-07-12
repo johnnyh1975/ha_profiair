@@ -35,23 +35,23 @@ MODEL_PROTOCOLS: dict[str, str] = {
 # im HIGH-Byte (Byte 4) der System-ID -- siehe extract_unit_type().
 # Typ 4/11/15 sind durch die Doku belegt; Typ 27 (130 flat) stammt aus einem
 # Community-Report (System-ID 0x1B0035C3, Firmware 3.22) und ist NICHT
-# doku-belegt. Die Registerkarte des 130 flat ist noch nicht auf realer
-# Hardware verifiziert.
+# doku-belegt -- die Registerkarte wurde aber per Register-Dump auf realer
+# 130-flat-Hardware bestätigt (stimmt mit den flex-Modellen überein).
 UNIT_TYPE_TO_MODEL: dict[int, str] = {
-    4:  MODEL_PROFI_AIR_180_FLAT,   # Experimentell
-    11: MODEL_PROFI_AIR_250_FLEX,
-    15: MODEL_PROFI_AIR_360_FLEX,
-    27: MODEL_PROFI_AIR_130_FLAT,   # Community-verifiziert, nicht doku-belegt
+    4:  MODEL_PROFI_AIR_180_FLAT,   # Experimentell (nur Doku)
+    11: MODEL_PROFI_AIR_250_FLEX,   # Experimentell (nur Doku)
+    15: MODEL_PROFI_AIR_360_FLEX,   # Auf realer Hardware bestätigt
+    27: MODEL_PROFI_AIR_130_FLAT,   # Community-Typcode, auf realer Hardware bestätigt
 }
 
 # Anzeige-Name pro Modell (für device_info und Config Flow Bestätigung)
 MODEL_DISPLAY: dict[str, str] = {
     MODEL_PROFI_AIR_250:      "Profi-Air 250 touch",
     MODEL_PROFI_AIR_400:      "Profi-Air 400 touch",
-    MODEL_PROFI_AIR_250_FLEX: "profi-air 250 flex",
+    MODEL_PROFI_AIR_250_FLEX: "profi-air 250 flex (experimentell)",
     MODEL_PROFI_AIR_360_FLEX: "profi-air 360 flex",
     MODEL_PROFI_AIR_180_FLAT: "profi-air 180 flat (experimentell)",
-    MODEL_PROFI_AIR_130_FLAT: "profi-air 130 flat (experimentell)",
+    MODEL_PROFI_AIR_130_FLAT: "profi-air 130 flat",
 }
 
 # EC-Motor-Modell: P = P_base + k × (RPM/RPM_max)³

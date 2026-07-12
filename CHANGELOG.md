@@ -7,6 +7,47 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [2.0.7] – 2026-07
 
+### CI-Pipeline (neu)
+
+- **HACS-Auslieferung auf `zip_release` umgestellt.** `hacs.json` setzt jetzt
+  `zip_release: true` und `filename: ha-profiair.zip`. HACS lädt damit nicht
+  mehr den Repo-Quellcode, sondern das fertige, in CI gebaute und
+  strukturvalidierte Release-Asset — Nutzer bekommen exakt das, was die
+  Pipeline getestet hat.
+  - **Wichtig:** Jedes Release muss ab jetzt das Asset `ha-profiair.zip`
+    enthalten; `release.yml` baut und prüft es automatisch. Ältere Releases
+    (vor dieser Umstellung) haben dieses Asset nicht und lassen sich über
+    HACS nicht mehr installieren — ein Downgrade auf eine alte Version ist
+    darüber also nicht möglich. Der manuelle Weg (Full-ZIP herunterladen und
+    entpacken) funktioniert weiterhin für alle Versionen.
+  - Der Asset-Name ist bewusst **ohne Versionsnummer**: HACS sucht in jedem
+    Release nach exakt diesem Dateinamen.
+- **Doppelte `hacs.json` entfernt.** Es lag eine identische Kopie in
+  `custom_components/kwl_fraenkische/`. HACS liest `hacs.json` ausschliesslich
+  aus dem Repo-Root; die innere Kopie wurde sinnlos an Nutzer ausgeliefert —
+  und wäre mit `zip_release` fälschlich ins ZIP gewandert, was HACS verbietet.
+  Sechs neue Guard-Tests sichern den Packaging-Vertrag jetzt maschinell ab
+  (Asset-Name, ZIP-Struktur, keine innere `hacs.json`), damit die bekannte
+  Doppelverschachtelungs-Falle nicht auftreten kann.
+- **GitHub-Actions-Pipeline eingeführt.** `validate.yml` (HACS, Hassfest,
+  Testsuite mit Coverage, Ruff-Lint, Übersetzungs-Vollständigkeit,
+  Versions-Badge-Konsistenz, Markdown-Link-Prüfung), `codeql.yml`
+  (wöchentlicher Security-Scan) und `release.yml` (Tag → getestetes,
+  strukturvalidiertes Release-Paket). Dazu Dependabot für Test-Abhängigkeiten
+  und Workflow-Actions.
+- **Code-Bereinigung durch den neuen Lint-Job (27 echte Findings, alle
+  behoben, keine unterdrückt):** 23 ungenutzte Importe entfernt; 3 lokale
+  Re-Importe, die die Modul-Importe überschatteten (`async_track_time_interval`,
+  `RPM_DEFAULTS`), beseitigt; das aus dem A/B-Schalterregister gelesene, aber
+  nie verwendete `hal_right` fließt jetzt in die Setup-Logzeile ein — damit
+  sind die Rohwerte sichtbar, falls Zu-/Abluft je vertauscht zugeordnet wird.
+  Kein Verhalten geändert, 517/517 Tests weiter grün.
+- **Versions-Badge-Drift behoben:** Die README zeigte 2.0.2, während das
+  Manifest bei 2.0.7 stand — fünf Releases unbemerkte Abweichung. Genau das
+  prüft jetzt ein CI-Job bei jedem Push. Der Tests-Badge mit fest
+  eingetragener Anzahl („453 passing") wurde durch einen Live-CI-Statusbadge
+  ersetzt, der nicht veralten kann.
+
 ### Geschätzte Energiesensoren für flex/flat
 
 - **Energieverbrauch pro Stufe + Gesamt für flex/flat** (`energy_level_1..4
@@ -40,6 +81,11 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
   fälschlich nur unter „touch"; sie laufen auf allen Modellen und stehen jetzt
   korrekt unter „Alle Geräte". Raumtemperatur- und Leistungs-Beschreibung für
   flex/flat präzisiert.
+- **„experimentell"-Kennzeichnung an die reale Validierung angeglichen.** Der
+  Marker im Modell-Anzeigenamen folgt jetzt dem Hardware-Status: 250 flex und
+  180 flat (nur aus Doku) sind experimentell; 360 flex und 130 flat (auf realer
+  Hardware bestätigt) nicht mehr. Zuvor war das inkonsistent (250 flex ohne
+  Marker, 130 flat noch mit).
 
 Neue Tests: LevelHoursTracker (Akkumulation, Persistenz, Monotonie), geschätzte
 flex-Energiesensoren, T5-Sentinel, 130-flat-Watt-Defaults. Vollständige

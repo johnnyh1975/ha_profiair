@@ -16,8 +16,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PROTOCOL, DOMAIN, ENDPOINT_INSTALL, ENDPOINT_WOPLA, FLEX_MODE_TEXT, FLEX_MODE_TO_WRITE, PROTOCOL_HTTP, PROTOCOL_MODBUS
-from .coordinator import KWLCapabilities, KWLCoordinator, KWLData, _is_supported
+from .const import CONF_PROTOCOL, FLEX_MODE_TEXT, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .coordinator import KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 1
 

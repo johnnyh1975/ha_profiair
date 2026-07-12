@@ -802,8 +802,9 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
 
         switch_pos = "B" if fan1_is_extract else "A"
         _LOGGER.info(
-            "KWL Flex: %s erkannt (FW %s, Schalter %s, Ref-RPM Ex/Su %d/%d)",
-            model_name, fw_str, switch_pos,
+            "KWL Flex: %s erkannt (FW %s, Schalter %s [HAL L/R %d/%d], "
+            "Ref-RPM Ex/Su %d/%d)",
+            model_name, fw_str, switch_pos, hal_left, hal_right,
             ref_rpm_extract, ref_rpm_supply,
         )
 

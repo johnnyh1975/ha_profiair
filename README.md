@@ -2,9 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
-[![Tests](https://img.shields.io/badge/Tests-453%20passing-brightgreen.svg)](.github/workflows/validate.yaml)
+[![Validate](https://github.com/johnnyh1975/ha-profiair/actions/workflows/validate.yml/badge.svg)](https://github.com/johnnyh1975/ha-profiair/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.0.2-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.7-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
@@ -90,12 +90,12 @@ Everything runs locally. No cloud, no subscription, no external services.
 
 | Device | Protocol | Status |
 |---|---|---|
-| **profi-air 250 flex** | Modbus TCP | ⚙️ Built from the official Modbus documentation; real-hardware feedback welcome |
-| **profi-air 360 flex** | Modbus TCP | ⚙️ Detected on real hardware; full validation of all values in progress |
-| **profi-air 180 flat** | Modbus TCP | ⚠️ Experimental — device type from documentation, not yet confirmed on hardware |
-| **profi-air 130 flat** | Modbus TCP | ⚠️ Experimental — device type from a community report (type 27), register map not yet verified |
+| **profi-air 360 flex** | Modbus TCP | ✅ Confirmed reading correctly on real hardware |
+| **profi-air 130 flat** | Modbus TCP | ✅ Register map confirmed on real hardware |
+| **profi-air 250 flex** | Modbus TCP | ⚙️ Built from the official Modbus documentation; hardware feedback welcome |
+| **profi-air 180 flat** | Modbus TCP | ⚙️ Built from the official Modbus documentation; hardware feedback welcome |
 
-The flex/flat side was implemented from the official Fränkische Modbus TCP/IP documentation. The touch side is validated against a real 400 touch; the flex/flat side is now reaching real hardware, and feedback from flex/flat owners is what drives it toward full validation. If you own a flex or flat unit, reports on GitHub — even just confirming that temperatures and fan levels read correctly — are very welcome.
+The flex/flat side was implemented from the official Fränkische Modbus TCP/IP documentation. The touch side is validated against a real 400 touch; the 360 flex and 130 flat are now confirmed on real hardware, and the 250 flex and 180 flat still rely on the documentation. Feedback from owners of those two is what drives them toward full validation — reports on GitHub, even just confirming that temperatures and fan levels read correctly, are very welcome.
 
 The integration detects the protocol automatically: it tries HTTP first (touch), then falls back to Modbus (flex/flat). No manual protocol selection needed.
 
@@ -586,7 +586,7 @@ Verify `http://YOUR_KWL_IP/status.xml` returns XML data. Check network routing i
 Verify Modbus TCP port 502 is reachable: `nc -zv YOUR_KWL_IP 502` or a Modbus scanner. Some installations require the UVC controller to have Modbus access explicitly enabled in its configuration.
 
 **Unknown device type error during setup (flex)**
-The integration read a Modbus unit type code it does not recognise. Currently supported: code 11 (250 flex), code 15 (360 flex), code 4 (180 flat). Note the code shown and open an issue — new unit types can be added quickly.
+The integration read a Modbus unit type code it does not recognise. Currently supported: code 11 (250 flex), code 15 (360 flex), code 4 (180 flat), code 27 (130 flat). Note the code and the raw System-ID shown in the error and open an issue — new unit types can be added quickly.
 
 **Fan level control unavailable on flex**
 This is a known v2.0.0 limitation. The FC16 write block format for level changes is pending confirmation from a hardware test. All read entities and mode selection work normally. Fan level control comes in v2.0.1.
