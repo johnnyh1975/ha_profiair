@@ -79,7 +79,7 @@ jobs:
       # a threshold on this number as it stands — it would be gating on a
       # metric that does not measure what it appears to measure.
       - name: Upload coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml
