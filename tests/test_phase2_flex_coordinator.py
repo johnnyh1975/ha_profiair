@@ -533,8 +533,8 @@ class TestWriteMethodsSource:
     def test_set_level_switches_to_manual_if_needed(self):
         """Gerät übernimmt Stufenänderungen nur im Manual-Mode -- muss ggf. vorher wechseln."""
         src = self._method_source("async_set_level")
-        assert "current_mode_text" in src
-        assert 'FLEX_MODE_TO_WRITE["Manuell"]' in src
+        assert "current_mode_slug" in src
+        assert 'FLEX_MODE_TO_WRITE["manual"]' in src
 
     def test_set_level_uses_lock(self):
         src = self._method_source("async_set_level")

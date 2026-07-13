@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PROTOCOL, FLEX_MODE_TEXT, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .const import CONF_PROTOCOL, FLEX_MODE_SLUG, PROTOCOL_HTTP, PROTOCOL_MODBUS
 from .coordinator import KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 1
@@ -25,20 +25,27 @@ PARALLEL_UPDATES = 1
 # Bypass -- setup.htm
 # ---------------------------------------------------------------------------
 
+# HA-Option (SLUG) -> POST-Wert des Geraets.
+# Die Slugs sind der Entity-State; Home Assistant verlangt fuer
+# State-Uebersetzungsschluessel [a-z0-9-_]+ (hassfest [TRANSLATIONS]).
+# Die Anzeigenamen ("Manuell offen", "Manual open") stehen in translations/*.
+# Die POST-Werte (bypa0/1/2) sind Geraete-Protokoll und bleiben unveraendert.
 BYPASS_OPTIONS: dict[str, str] = {
-    "Manuell offen": "bypa0",
-    "Manuell zu": "bypa1",
-    "Automatisch": "bypa2",
+    "manual_open": "bypa0",
+    "manual_closed": "bypa1",
+    "automatic": "bypa2",
 }
 
+# Geraete-Statustext (aus status.xml) -> HA-Option (Slug).
+# Die Schluessel sind Geraete-Ausgaben und bleiben unveraendert.
 BYPASS_STATUS_MAP: dict[str, str] = {
-    "auto: offen": "Automatisch",
-    "auto: zu": "Automatisch",
-    "man.: offen": "Manuell offen",
-    "man.: zu": "Manuell zu",
-    "automatisch": "Automatisch",
-    "manuell offen": "Manuell offen",
-    "manuell zu": "Manuell zu",
+    "auto: offen": "automatic",
+    "auto: zu": "automatic",
+    "man.: offen": "manual_open",
+    "man.: zu": "manual_closed",
+    "automatisch": "automatic",
+    "manuell offen": "manual_open",
+    "manuell zu": "manual_closed",
 }
 
 
@@ -99,9 +106,9 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         name="Haustyp",
         icon="mdi:home",
-        options=["Eigenheim", "Mietwohnung"],
-        options_map={"Eigenheim": "0", "Mietwohnung": "1"},
-        reverse_map={"eigenheim": "Eigenheim", "mietwohnung": "Mietwohnung"},
+        options=["single_family", "apartment"],
+        options_map={"single_family": "0", "apartment": "1"},
+        reverse_map={"eigenheim": "single_family", "mietwohnung": "apartment"},
         post_field="Install",
         post_url_fn=_install_url,
         value_fn=lambda d: _normalize_install_type(d.install_type),
@@ -113,9 +120,9 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         name="Vorheizregister Modus",
         icon="mdi:heating-coil",
-        options=["Aktiv", "Passiv"],
-        options_map={"Aktiv": "1", "Passiv": "0"},
-        reverse_map={"aktiv": "Aktiv", "passiv": "Passiv"},
+        options=["active", "passive"],
+        options_map={"active": "1", "passive": "0"},
+        reverse_map={"aktiv": "active", "passiv": "passive"},
         post_field="VHR",
         post_url_fn=_install_url,
         value_fn=lambda d: _normalize_preheater(d),
@@ -127,11 +134,11 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         name="Safety Manager",
         icon="mdi:shield-check",
-        options=["Mit", "Ohne"],
-        options_map={"Mit": "1", "Ohne": "0"},
+        options=["enabled", "disabled"],
+        options_map={"enabled": "1", "disabled": "0"},
         post_field="Safety",
         post_url_fn=_install_url,
-        value_fn=lambda d: "Mit" if d.safety_active else "Ohne",
+        value_fn=lambda d: "enabled" if d.safety_active else "disabled",
     ),
 
     # Externe Sensoren Typ 1-4 -- install.htm
@@ -190,8 +197,11 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
         key="operating_mode",
         name="Betriebsmodus",
         icon="mdi:cog",
-        options=list(FLEX_MODE_TEXT.values()),
-        value_fn=lambda d: d.current_mode_text,
+        # Slugs statt deutschem Klartext -- HA verlangt Slugs als Entity-State.
+        # Der Sensor `current_mode_text` zeigt weiterhin deutschen Klartext an;
+        # die beiden Maps sind ueber denselben Register-Wert verknuepft.
+        options=list(FLEX_MODE_SLUG.values()),
+        value_fn=lambda d: d.current_mode_slug,
         supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
 )
@@ -200,14 +210,14 @@ SELECTS: tuple[KWLSelectDescription, ...] = (
 def _normalize_install_type(raw: str) -> str | None:
     r = raw.strip().lower()
     if "eigenheim" in r:
-        return "Eigenheim"
+        return "single_family"
     if "miet" in r:
-        return "Mietwohnung"
+        return "apartment"
     return None
 
 
 def _normalize_preheater(d: KWLData) -> str:
-    return "Aktiv" if d.preheater_active else "Passiv"
+    return "active" if d.preheater_active else "passive"
 
 
 def _normalize_sensor_type(raw: str) -> str:

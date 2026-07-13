@@ -130,3 +130,26 @@ class TestHacsJsonSchema:
         assert "icon" not in manifest, (
             "manifest.json darf keinen 'icon'-Key haben -- hassfest lehnt das ab"
         )
+
+
+class TestManifestKeyOrder:
+    """hassfest verlangt eine feste Key-Reihenfolge im manifest.json:
+    zuerst `domain`, dann `name`, danach alle uebrigen Keys alphabetisch.
+
+    Realer CI-Fehler: "Manifest keys are not sorted correctly". Der Test haelt
+    die Reihenfolge fest -- sonst bricht sie beim naechsten Hinzufuegen eines
+    Keys (etwa bei einem Versions-Bump von Hand) sofort wieder.
+    """
+
+    def test_keys_are_sorted_per_hassfest(self):
+        text = (INTEGRATION_DIR / "manifest.json").read_text(encoding="utf-8")
+        # Reihenfolge aus der Datei lesen (json.load bewahrt sie in py3.7+)
+        keys = list(json.loads(text).keys())
+        assert keys[0] == "domain", "manifest.json muss mit 'domain' beginnen"
+        assert keys[1] == "name", "'name' muss direkt auf 'domain' folgen"
+        rest = keys[2:]
+        assert rest == sorted(rest), (
+            f"Die Keys nach domain/name muessen alphabetisch sortiert sein.\n"
+            f"  ist:  {rest}\n"
+            f"  soll: {sorted(rest)}"
+        )

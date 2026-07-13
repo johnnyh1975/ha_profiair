@@ -308,7 +308,7 @@ class TestSelectPlatform:
 
     def test_flex_mode_text_used_for_options(self):
         src = _src("select.py")
-        assert "FLEX_MODE_TEXT" in src
+        assert "FLEX_MODE_SLUG" in src
 
     def test_kwl_flex_select_class_exists(self):
         assert _has_class("select.py", "KWLFlexSelect")

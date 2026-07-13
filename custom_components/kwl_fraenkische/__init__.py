@@ -8,9 +8,14 @@ _LOGGER = logging.getLogger(__name__)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4, DEFAULT_WATT, CONF_PROTOCOL, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .const import (
+    CONF_PROTOCOL,
+    CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
+    DEFAULT_WATT, DOMAIN, PROTOCOL_HTTP, PROTOCOL_MODBUS,
+)
 from .coordinator import KWLCoordinator
 from .flex_coordinator import KWLFlexCoordinator
 
@@ -161,7 +166,34 @@ async def _async_options_updated(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+# ── Breaking Change 2.1.0: Entity-States sind jetzt Slugs ────────────────────
+
+# Ein einmaliges Repair-Issue, das Nutzer nach dem Update auf die geaenderten
+# Entity-States hinweist. Es traegt hier bewusst viel Gewicht: die Umstellung
+# bricht Automationen, die alte deutsche States referenzieren, und die
+# Versionsnummer (2.1.0) signalisiert das nicht von sich aus. Das Issue ist
+# daher die eigentliche Warnung.
+#
+# is_fixable=False: es gibt nichts, was die Integration automatisch reparieren
+# koennte -- die Nutzer muessen ihre eigenen Automationen anpassen. Das Issue
+# ist rein informativ und wird per "Ignorieren" quittiert.
+_SLUG_MIGRATION_ISSUE = "slug_states_2_1_0"
+
+
+def _async_create_slug_migration_issue(hass: HomeAssistant) -> None:
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        _SLUG_MIGRATION_ISSUE,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=_SLUG_MIGRATION_ISSUE,
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: KWLConfigEntry) -> bool:
+    _async_create_slug_migration_issue(hass)
+
     protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
 
     if protocol == PROTOCOL_MODBUS:

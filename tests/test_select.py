@@ -17,22 +17,22 @@ class TestParseBypass:
     """Tests fuer _parse_bypass -- Freitext -> HA-Option Konvertierung."""
 
     def test_auto_offen(self):
-        assert _parse_bypass("Auto: Offen") == "Automatisch"
+        assert _parse_bypass("Auto: Offen") == "automatic"
 
     def test_auto_zu(self):
-        assert _parse_bypass("Auto: Zu") == "Automatisch"
+        assert _parse_bypass("Auto: Zu") == "automatic"
 
     def test_manuell_offen(self):
-        assert _parse_bypass("Man.: Offen") == "Manuell offen"
+        assert _parse_bypass("Man.: Offen") == "manual_open"
 
     def test_manuell_zu(self):
-        assert _parse_bypass("Man.: Zu") == "Manuell zu"
+        assert _parse_bypass("Man.: Zu") == "manual_closed"
 
     def test_case_insensitive(self):
-        assert _parse_bypass("AUTO: OFFEN") == "Automatisch"
+        assert _parse_bypass("AUTO: OFFEN") == "automatic"
 
     def test_with_whitespace(self):
-        assert _parse_bypass("  Auto: Offen  ") == "Automatisch"
+        assert _parse_bypass("  Auto: Offen  ") == "automatic"
 
     def test_unknown_returns_none(self):
         assert _parse_bypass("unbekannt") is None
@@ -45,14 +45,14 @@ class TestBypassOptions:
     """Tests fuer BYPASS_OPTIONS Mapping."""
 
     def test_all_three_options_present(self):
-        assert "Manuell offen" in BYPASS_OPTIONS
-        assert "Manuell zu" in BYPASS_OPTIONS
-        assert "Automatisch" in BYPASS_OPTIONS
+        assert "manual_open" in BYPASS_OPTIONS
+        assert "manual_closed" in BYPASS_OPTIONS
+        assert "automatic" in BYPASS_OPTIONS
 
     def test_post_values_correct(self):
-        assert BYPASS_OPTIONS["Manuell offen"] == "bypa0"
-        assert BYPASS_OPTIONS["Manuell zu"] == "bypa1"
-        assert BYPASS_OPTIONS["Automatisch"] == "bypa2"
+        assert BYPASS_OPTIONS["manual_open"] == "bypa0"
+        assert BYPASS_OPTIONS["manual_closed"] == "bypa1"
+        assert BYPASS_OPTIONS["automatic"] == "bypa2"
 
     def test_all_post_values_unique(self):
         values = list(BYPASS_OPTIONS.values())
@@ -88,15 +88,15 @@ class TestInstallTypeNormalization:
 
     def test_eigenheim(self):
         from kwl_fraenkische.select import _normalize_install_type
-        assert _normalize_install_type("Eigenheim") == "Eigenheim"
+        assert _normalize_install_type("Eigenheim") == "single_family"
 
     def test_mietwohnung(self):
         from kwl_fraenkische.select import _normalize_install_type
-        assert _normalize_install_type("Mietwohnung") == "Mietwohnung"
+        assert _normalize_install_type("Mietwohnung") == "apartment"
 
     def test_case_insensitive(self):
         from kwl_fraenkische.select import _normalize_install_type
-        assert _normalize_install_type("EIGENHEIM") == "Eigenheim"
+        assert _normalize_install_type("EIGENHEIM") == "single_family"
 
     def test_unknown_returns_none(self):
         from kwl_fraenkische.select import _normalize_install_type

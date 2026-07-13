@@ -5,15 +5,98 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.1.0] – 2026-07
+
+### ⚠️ BREAKING CHANGE: Entity-Zustände sind jetzt Slugs
+
+**Automationen, Skripte und Templates, die die alten deutschen Zustände
+referenzieren, funktionieren nach dem Update nicht mehr und müssen angepasst
+werden.** Nach dem Update erscheint in Home Assistant ein Reparatur-Hinweis mit
+der vollständigen Zuordnungstabelle.
+
+Hintergrund: Home Assistant verlangt, dass Übersetzungsschlüssel für
+Entity-Zustände Slugs sind (`[a-z0-9-_]+`). Diese Integration verwendete
+deutschen Klartext („Manuell offen", „Stufe 4 - Intensivlueftung") — das wurde
+von der offiziellen HA-Validierung (hassfest) abgelehnt und verhinderte zudem
+eine echte englische Lokalisierung.
+
+**Die Anzeige bleibt in beiden Sprachen unverändert** (und ist für englische
+Nutzer erstmals wirklich übersetzt) — nur die technischen Zustandswerte ändern
+sich:
+
+| Entität | Alt | Neu |
+|---|---|---|
+| `fan` preset_mode | `Stufe 1 - Feuchteschutz` … `Stufe 4 - Intensivlueftung` | `level_1` … `level_4` |
+| Bypass-Steuerung | `Manuell offen` / `Manuell zu` / `Automatisch` | `manual_open` / `manual_closed` / `automatic` |
+| Betriebsmodus | `Manuell` / `Bedarfsgesteuert` / `Wochenprogramm` / `Urlaub` / `Sommer` / `Nacht` / `Kaminbetrieb` | `manual` / `demand` / `weekly_schedule` / `away` / `summer` / `night` / `fireplace` |
+| Haustyp | `Eigenheim` / `Mietwohnung` | `single_family` / `apartment` |
+| Vorheizregister | `Aktiv` / `Passiv` | `active` / `passive` |
+| Safety Manager | `Mit` / `Ohne` | `enabled` / `disabled` |
+
+**Nicht betroffen:**
+- Der Sensor „Aktueller Modus" (`current_mode_text`) zeigt weiterhin deutschen
+  Klartext — er hat keine Zustandsübersetzungen und wurde bewusst nicht
+  mitgeändert, um den Bruch nicht unnötig auszuweiten.
+- Das Geräteprotokoll (POST-Werte, Modbus-Bitmasken, Geräte-Statustexte) ist
+  vollständig unverändert. Die Umstellung betrifft ausschliesslich die
+  Home-Assistant-Fassade.
+
+### Weitere Änderungen
+
+- **Englische Lokalisierung der Auswahloptionen.** Erst durch die Slug-Keys
+  können die Optionen überhaupt übersetzt werden — englische Nutzer sahen
+  bisher deutsche Werte.
+- **Reparatur-Hinweis nach dem Update** (`slug_states_2_1_0`) mit der
+  vollständigen Zuordnungstabelle, damit niemand die Änderung übersieht.
+- **Neue Guard-Tests**, die die hassfest-Regel nachbilden: alle
+  Zustandsschlüssel müssen Slugs sein, und die Geräte-Payloads dürfen sich
+  dabei nicht mitverändern. Ausserdem ein Test, der sicherstellt, dass die
+  deutsche Sensor-Textmap und die Slug-Map nicht auseinanderlaufen.
+
+Vollständige Suite: 770/770 grün.
+
+
 ## [2.0.7] – 2026-07
 
 ### CI-Pipeline (neu)
+
+- **Hartkodierte Entwicklungspfade aus den Tests entfernt.** Sechs
+  `test_phase*`-Dateien enthielten absolute Pfade der Entwicklungsumgebung
+  (`/home/claude/...`). Lokal lief das, in CI existieren diese Pfade nicht --
+  über 200 Tests scheiterten mit `FileNotFoundError`. Alle Pfade werden jetzt
+  aus `__file__` abgeleitet; die Suite wurde gegengeprüft, indem das Repo an
+  einen völlig anderen Ort kopiert und dort ausgeführt wurde.
+
+- **Testsuite zusammengeführt (760 Tests).** Beim conftest-Neuaufbau für die CI
+  gingen die Fixtures der ursprünglichen conftest verloren; die älteren Tests
+  (`test_capabilities`, `test_coordinator`, `test_fan`, `test_select`,
+  `test_sensor`, `test_config_flow`, `test_firmware_v2`) scheiterten dadurch.
+  Beide Generationen sind jetzt vereint -- sie ergänzen einander: die
+  `test_phase*`-Tests prüfen die *Struktur* (AST-basiert), die älteren das
+  *Laufzeitverhalten* (echte Imports). Dabei gefundene echte Abweichungen:
+  - **`temp_room` fehlte `force_update=True`** -- als einziger Temperatursensor.
+    Der Recorder schrieb dadurch keine lückenlose Historie. Behoben.
+  - Die älteren Tests kodierten **veraltete Schwellenwerte**: ETA-Guard 1,5 K
+    (aktuell 3 K, wegen Messrauschen angehoben) und Motorasymmetrie 25 %
+    (aktuell 22 %, nach Hardware-Rückmeldung gesenkt). Auf die aktuellen Werte
+    nachgezogen, inklusive Begründung im Test.
+  - Der ConfigFlow-Versionstest forderte fest `VERSION == 2` (aktuell 4). Er
+    prüft jetzt, dass die Version nicht *zurückfällt*, statt eine feste Zahl zu
+    fordern -- so überlebt er künftige Migrationen.
+  - Tests, die *jeden* `value_fn` mit touch-Daten aufriefen, berücksichtigen
+    jetzt `supported_protocols`. Modbus-only-Sensoren bekommen in der Produktion
+    nie ein `KWLData`. (Bewusst NICHT über `getattr`-Fallbacks im Produktivcode
+    gelöst -- die hätten echte Tippfehler still verschluckt.)
 
 - **HACS-Konformität: `iot_class` aus `hacs.json` entfernt.** Die
   HACS-Validierung lehnt den Key ab („extra keys not allowed") -- er gehört
   ins `manifest.json`, wo er ohnehin schon korrekt stand. In `hacs.json` war
   er eine Dublette am falschen Ort. Ein Guard-Test prüft jetzt, dass
   `hacs.json` ausschliesslich von HACS erlaubte Keys enthält.
+- **Hassfest: manifest.json-Key-Reihenfolge korrigiert.** hassfest verlangt
+  `domain`, `name`, danach alle übrigen Keys alphabetisch. Ein Guard-Test hält
+  die Reihenfolge jetzt fest, damit sie beim nächsten Versions-Bump nicht
+  wieder bricht.
 - **Hassfest-Konformität: zwei Verstöße behoben.** Der neue Hassfest-Job hat
   Fehler aufgedeckt, die vorher nie geprüft wurden:
   - `manifest.json` enthielt einen `icon`-Key (`mdi:fan`). Der ist im Manifest

@@ -19,11 +19,17 @@ AnyKWLCoordinator = KWLCoordinator | KWLFlexCoordinator
 
 PARALLEL_UPDATES = 1
 
+# Preset-Modus (SLUG) -> Geraete-Luefterstufe.
+# Die Slugs sind der Wert des preset_mode-Attributs, also Teil des Entity-State.
+# Home Assistant verlangt fuer State-Uebersetzungsschluessel [a-z0-9-_]+
+# (hassfest [TRANSLATIONS]); deutscher Klartext ist dort nicht zulaessig.
+# Die Anzeigenamen ("Stufe 4 - Intensivlueftung", "Level 4 - Intensive") stehen
+# in translations/*.json.
 PRESET_MODES = {
-    "Stufe 1 - Feuchteschutz": 1,
-    "Stufe 2 - Reduziert": 2,
-    "Stufe 3 - Nennlueftung": 3,
-    "Stufe 4 - Intensivlueftung": 4,
+    "level_1": 1,
+    "level_2": 2,
+    "level_3": 3,
+    "level_4": 4,
 }
 LEVEL_TO_PRESET = {v: k for k, v in PRESET_MODES.items()}
 

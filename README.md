@@ -2,9 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
-[![Validate](https://github.com/johnnyh1975/ha-profiair/actions/workflows/validate.yml/badge.svg)](https://github.com/johnnyh1975/ha-profiair/actions/workflows/validate.yml)
+[![Validate](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml/badge.svg)](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.0.7-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
@@ -118,7 +118,7 @@ For touch devices, entity capabilities are discovered from the XML response — 
 **Via HACS (recommended)**
 
 1. HACS → Integrations → menu (⋮) → Custom repositories
-2. Add `https://github.com/johnnyh1975/ha-profiair` — category Integration
+2. Add `https://github.com/johnnyh1975/ha_profiair` — category Integration
 3. Search for **KWL Fränkische Rohrwerke**, install, restart HA
 
 **Manual**
@@ -272,7 +272,7 @@ Create two binary sensor helpers (Settings → Helpers → Template → Binary s
 
 **`kwl_sommer_kuehlung_aktiv`**
 ```
-{{ is_state_attr('fan.kwl_fraenkische_rohrwerke', 'preset_mode', 'Stufe 4 - Intensivlueftung') }}
+{{ is_state_attr('fan.profi_air_400_fan', 'preset_mode', 'level_4') }}
 ```
 
 **`kwl_sommertag`**
@@ -399,7 +399,7 @@ Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` f
 | Entity | Description |
 |---|---|
 | `fan.profi_air_400_fan` | Fan level 1–4 |
-| `select.profi_air_400_bypass_select` | Automatisch / Manuell offen / Manuell zu |
+| `select.profi_air_400_bypass_select` | `automatic` / `manual_open` / `manual_closed` (displayed localised) |
 | `number.profi_air_400_bypass_schwelle_aussenluft` | Bypass Auto threshold — outdoor (°C) |
 | `number.profi_air_400_bypass_schwelle_abluft` | Bypass Auto threshold — extract (°C) |
 | `number.profi_air_400_kalibrierung_*` | Temperature sensor offsets |
@@ -610,14 +610,14 @@ Entity IDs are frozen at first registration per HA convention. New installations
 
 ## Known firmware behaviour
 
-**Bypass reverts `Manuell offen` automatically**
-The firmware treats `Manuell offen` as a temporary state and reverts to `Auto` within seconds. This is intentional. The summer cooling automation is designed around this: it controls fan level (stable) and relies on the firmware Auto logic for bypass, with thresholds set to their minimum values.
+**Bypass reverts `manual_open` automatically**
+The firmware treats `manual_open` as a temporary state and reverts to `Auto` within seconds. This is intentional. The summer cooling automation is designed around this: it controls fan level (stable) and relies on the firmware Auto logic for bypass, with thresholds set to their minimum values.
 
 **Operating hours and clock drift**
 The device has no NTP access. Clock drift accumulates over the device lifetime (typical 10–20% fast over 10+ years). Operating hours are accurate relative to each other and for per-level comparison; absolute values may be inflated. The maintenance alert fires on the device's own counter, which is internally consistent.
 
 **Party mode**
-Party mode activates Stufe 4 for a device-side timer. The fan entity correctly reports `Stufe 4 - Intensivlueftung` during party mode. The `kwl_sommer_kuehlung_aktiv` helper reads `on` during party mode, which is correct.
+Party mode activates Stufe 4 for a device-side timer. The fan entity correctly reports preset_mode `level_4` during party mode. The `kwl_sommer_kuehlung_aktiv` helper reads `on` during party mode, which is correct.
 
 ---
 

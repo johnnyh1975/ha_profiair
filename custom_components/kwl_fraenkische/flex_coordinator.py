@@ -51,6 +51,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     FLEX_ALARM_TEXT,
+    FLEX_MODE_SLUG,
     FLEX_MODE_TEXT,
     FLEX_MODE_TO_END,
     FLEX_MODE_TO_WRITE,
@@ -398,7 +399,19 @@ class KWLFlexData:
 
     @property
     def current_mode_text(self) -> str:
+        """Deutscher Klartext -- speist den Sensor `current_mode_text`.
+
+        Bleibt bewusst deutsch (siehe FLEX_MODE_TEXT in const.py)."""
         return FLEX_MODE_TEXT.get(self.current_mode, f"Modus {self.current_mode}")
+
+    @property
+    def current_mode_slug(self) -> str | None:
+        """Slug -- speist die `operating_mode`-Select-Entity.
+
+        HA verlangt Slugs als Entity-State (Uebersetzungsschluessel). None bei
+        einem unbekannten Modus-Code, damit die Select-Entity 'unbekannt'
+        anzeigt statt einen erfundenen Wert."""
+        return FLEX_MODE_SLUG.get(self.current_mode)
 
     @property
     def alarm_text(self) -> str:
@@ -758,7 +771,7 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 f"{raw_regs}], Firmware: {fw_str}. "
                 f"Unterstützt: {list(UNIT_TYPE_TO_MODEL.keys())}. "
                 f"Bitte diese Zeile vollständig im GitHub-Issue melden: "
-                f"https://github.com/johnnyh1975/ha-profiair/issues"
+                f"https://github.com/johnnyh1975/ha_profiair/issues"
             )
 
         # MAC-Adresse → Unique-ID
@@ -1061,14 +1074,14 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         """
         level = max(1, min(4, level))
         async with self._lock:
-            if self.data is not None and self.data.current_mode_text != "Manuell":
-                await self._write_uint32(168, FLEX_MODE_TO_WRITE["Manuell"])
+            if self.data is not None and self.data.current_mode_slug != "manual":
+                await self._write_uint32(168, FLEX_MODE_TO_WRITE["manual"])
                 await asyncio.sleep(0.1)
             await self._write_uint32(324, level)  # offset 324 = 40325
         await self.async_request_refresh()  # Option C: sofortige Bestätigung
 
     async def async_set_mode(self, mode_name: str) -> None:
-        """Setzt den Betriebsmodus (z.B. 'Manuell', 'Urlaub').
+        """Setzt den Betriebsmodus per Slug (z.B. 'manual', 'away').
 
         Beendet ggf. den aktuellen Sondermodus (Urlaub, Sommer, Nacht, Kamin)
         bevor der neue Modus aktiviert wird.
@@ -1081,8 +1094,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         async with self._lock:
             # Aktuellen Modus lesen um ggf. End-Bitmask zu senden
             if self.data is not None:
-                current_name = self.data.current_mode_text
-                end_mask = FLEX_MODE_TO_END.get(current_name)
+                current_slug = self.data.current_mode_slug
+                end_mask = FLEX_MODE_TO_END.get(current_slug) if current_slug else None
                 if end_mask is not None:
                     await self._write_uint32(168, end_mask)  # offset 168 = 40169
                     await asyncio.sleep(0.1)

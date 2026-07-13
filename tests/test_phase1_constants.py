@@ -333,22 +333,26 @@ class TestFlexModeText:
 class TestFlexModeToWrite:
     def test_manual_bitmask(self):
         c = _const()
-        assert c.FLEX_MODE_TO_WRITE["Manuell"] == 0x0004
+        assert c.FLEX_MODE_TO_WRITE["manual"] == 0x0004
 
     def test_demand_bitmask(self):
         c = _const()
-        assert c.FLEX_MODE_TO_WRITE["Bedarfsgesteuert"] == 0x0002
+        assert c.FLEX_MODE_TO_WRITE["demand"] == 0x0002
 
     def test_week_program_bitmask(self):
         c = _const()
-        assert c.FLEX_MODE_TO_WRITE["Wochenprogramm"] == 0x0008
+        assert c.FLEX_MODE_TO_WRITE["weekly_schedule"] == 0x0008
 
-    def test_all_mode_texts_have_write_bitmask(self):
-        """Jeder anzeigebare Modus muss auch schreibbar sein."""
+    def test_all_mode_slugs_have_write_bitmask(self):
+        """Jeder waehlbare Modus (Slug) muss auch schreibbar sein.
+
+        Seit 2.1.0 ist FLEX_MODE_TO_WRITE slug-basiert -- die Select-Entity
+        liefert Slugs, nicht mehr deutschen Klartext.
+        """
         c = _const()
-        for mode_name in c.FLEX_MODE_TEXT.values():
+        for mode_name in c.FLEX_MODE_SLUG.values():
             assert mode_name in c.FLEX_MODE_TO_WRITE, (
-                f"'{mode_name}' in FLEX_MODE_TEXT aber nicht in FLEX_MODE_TO_WRITE"
+                f"'{mode_name}' in FLEX_MODE_SLUG aber nicht in FLEX_MODE_TO_WRITE"
             )
 
     def test_bitmasks_are_positive_ints(self):
@@ -392,9 +396,9 @@ class TestManifest:
     def _load(self):
         return json.loads(open(MANIFEST_PATH).read())
 
-    def test_version_is_2_0_7(self):
+    def test_version_is_2_1_0(self):
         m = self._load()
-        assert m["version"] == "2.0.7"
+        assert m["version"] == "2.1.0"
 
     def test_pymodbus_in_requirements(self):
         m = self._load()
@@ -430,3 +434,26 @@ class TestManifest:
     def test_codeowners_set(self):
         m = self._load()
         assert "@johnnyh1975" in m.get("codeowners", [])
+
+
+class TestModeMapsInSync:
+    """FLEX_MODE_TEXT (deutscher Sensor-Text) und FLEX_MODE_SLUG (Select-State)
+    sind zwei Sichten auf denselben Register-Wert. Laufen ihre Schluessel
+    auseinander, zeigt der Sensor einen Modus an, den die Select-Entity nicht
+    kennt (oder umgekehrt) -- ein stiller, schwer auffindbarer Fehler.
+    """
+
+    def test_same_register_keys(self):
+        c = _const()
+        assert set(c.FLEX_MODE_TEXT) == set(c.FLEX_MODE_SLUG), (
+            "FLEX_MODE_TEXT und FLEX_MODE_SLUG muessen dieselben "
+            "Register-Werte abdecken"
+        )
+
+    def test_slugs_are_valid_slugs(self):
+        """HA verlangt [a-z0-9-_]+ fuer State-Uebersetzungsschluessel."""
+        import re
+        c = _const()
+        pattern = re.compile(r"^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$")
+        for slug in c.FLEX_MODE_SLUG.values():
+            assert pattern.match(slug), f"{slug!r} ist kein gueltiger Slug"

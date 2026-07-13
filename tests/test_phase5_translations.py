@@ -32,9 +32,11 @@ FILES = {
     "en": BASE / "translations/en.json",
 }
 
+# Slugs seit 2.1.0: HA verlangt fuer State-Uebersetzungsschluessel [a-z0-9-_]+.
+# Die deutschen Anzeigenamen stehen jetzt als WERTE in den Uebersetzungen.
 FLEX_MODES = [
-    "Manuell", "Bedarfsgesteuert", "Wochenprogramm",
-    "Urlaub", "Sommer", "Nacht", "Kaminbetrieb",
+    "manual", "demand", "weekly_schedule",
+    "away", "summer", "night", "fireplace",
 ]
 
 NEW_SENSOR_KEYS = [
@@ -205,7 +207,7 @@ class TestSelectTranslations:
     def test_operating_mode_all_7_states_present(self, translation):
         name, data = translation
         states = data["entity"]["select"]["operating_mode"]["state"]
-        # Keys sind die deutschen Modi-Namen (device-seitig)
+        # Keys sind Slugs (HA-Anforderung); Anzeigenamen stehen als Werte
         for mode in FLEX_MODES:
             assert mode in states, (
                 f"Modus '{mode}' fehlt in operating_mode.state in {name}"

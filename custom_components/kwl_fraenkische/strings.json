@@ -76,10 +76,10 @@
         "state_attributes": {
           "preset_mode": {
             "state": {
-              "Stufe 1 - Feuchteschutz": "Stufe 1 – Feuchteschutz",
-              "Stufe 2 - Reduziert": "Stufe 2 – Reduziert",
-              "Stufe 3 - Nennlueftung": "Stufe 3 – Nennlüftung",
-              "Stufe 4 - Intensivlueftung": "Stufe 4 – Intensivlüftung"
+              "level_1": "Stufe 1 – Feuchteschutz",
+              "level_2": "Stufe 2 – Reduziert",
+              "level_3": "Stufe 3 – Nennlüftung",
+              "level_4": "Stufe 4 – Intensivlüftung"
             }
           }
         }
@@ -347,30 +347,30 @@
       "bypass_select": {
         "name": "Bypass Steuerung",
         "state": {
-          "Manuell offen": "Manuell offen",
-          "Manuell zu": "Manuell zu",
-          "Automatisch": "Automatisch"
+          "manual_open": "Manuell offen",
+          "manual_closed": "Manuell zu",
+          "automatic": "Automatisch"
         }
       },
       "install_type": {
         "name": "Haustyp",
         "state": {
-          "Eigenheim": "Eigenheim",
-          "Mietwohnung": "Mietwohnung"
+          "single_family": "Eigenheim",
+          "apartment": "Mietwohnung"
         }
       },
       "preheater_mode": {
         "name": "Vorheizregister Modus",
         "state": {
-          "Aktiv": "Aktiv",
-          "Passiv": "Passiv"
+          "active": "Aktiv",
+          "passive": "Passiv"
         }
       },
       "safety_mode": {
         "name": "Safety Manager",
         "state": {
-          "Mit": "Mit",
-          "Ohne": "Ohne"
+          "enabled": "Mit",
+          "disabled": "Ohne"
         }
       },
       "ext_sensor_type_1": {
@@ -388,13 +388,13 @@
       "operating_mode": {
         "name": "Betriebsmodus",
         "state": {
-          "Manuell": "Manuell",
-          "Bedarfsgesteuert": "Bedarfsgesteuert",
-          "Wochenprogramm": "Wochenprogramm",
-          "Urlaub": "Urlaub",
-          "Sommer": "Sommer",
-          "Nacht": "Nacht",
-          "Kaminbetrieb": "Kaminbetrieb"
+          "manual": "Manuell",
+          "demand": "Bedarfsgesteuert",
+          "weekly_schedule": "Wochenprogramm",
+          "away": "Urlaub",
+          "summer": "Sommer",
+          "night": "Nacht",
+          "fireplace": "Kaminbetrieb"
         }
       }
     },
@@ -457,6 +457,10 @@
           }
         }
       }
+    },
+    "slug_states_2_1_0": {
+      "title": "profi-air 2.1.0: Entity-Zustände geändert – Automationen prüfen",
+      "description": "Mit Version 2.1.0 verwenden die Auswahl-Entitäten und die Lüfter-Presets englische Schlüssel (Slugs) statt deutscher Klartexte. Home Assistant schreibt das für Übersetzungen vor. Die **Anzeige bleibt deutsch** – aber **Automationen, Skripte und Templates, die die alten Werte verwenden, funktionieren nicht mehr** und müssen angepasst werden.\n\n**Lüfter (`fan`, preset_mode):**\n- `Stufe 1 - Feuchteschutz` → `level_1`\n- `Stufe 2 - Reduziert` → `level_2`\n- `Stufe 3 - Nennlueftung` → `level_3`\n- `Stufe 4 - Intensivlueftung` → `level_4`\n\n**Bypass-Steuerung:** `Manuell offen` → `manual_open`, `Manuell zu` → `manual_closed`, `Automatisch` → `automatic`\n\n**Betriebsmodus:** `Manuell` → `manual`, `Bedarfsgesteuert` → `demand`, `Wochenprogramm` → `weekly_schedule`, `Urlaub` → `away`, `Sommer` → `summer`, `Nacht` → `night`, `Kaminbetrieb` → `fireplace`\n\n**Haustyp:** `Eigenheim` → `single_family`, `Mietwohnung` → `apartment`\n\n**Vorheizregister:** `Aktiv` → `active`, `Passiv` → `passive`\n\n**Safety Manager:** `Mit` → `enabled`, `Ohne` → `disabled`\n\nDer Sensor „Aktueller Modus\" zeigt weiterhin deutschen Klartext – dort ändert sich nichts.\n\nDiese Meldung kann nach dem Anpassen der Automationen ignoriert werden."
     }
   },
   "options": {

@@ -203,7 +203,11 @@ FLEX_ALARM_TEXT: dict[int, str] = {
     15: "E15 – Hoher Kondensatwasserstand",
 }
 
-# Betriebsmodi Register 40473 (lesen) → Anzeige-Text
+# Betriebsmodi Register 40473 (lesen) → deutscher Anzeige-Text.
+# Speist AUSSCHLIESSLICH den Sensor `current_mode_text`. Dessen State bleibt
+# bewusst deutscher Klartext: der Sensor hat keine State-Übersetzungen, hassfest
+# beanstandet ihn nicht, und ihn mit umzustellen wäre ein zusätzlicher, nicht
+# erforderlicher Bruch für Automationen, die ihn auslesen.
 FLEX_MODE_TEXT: dict[int, str] = {
     1:  "Manuell",
     2:  "Bedarfsgesteuert",
@@ -214,26 +218,43 @@ FLEX_MODE_TEXT: dict[int, str] = {
     12: "Kaminbetrieb",
 }
 
-# Anzeige-Text → Bitmask für Register 40169 (schreiben)
+# Betriebsmodi Register 40473 (lesen) → Slug.
+# Speist die `operating_mode`-SELECT-Entity. Home Assistant verlangt, dass
+# State-Übersetzungsschlüssel Slugs sind ([a-z0-9-_]+); deutscher Klartext als
+# Entity-State ist nicht zulaessig (hassfest [TRANSLATIONS]). Die Anzeigenamen
+# kommen aus translations/*.json.
+# Gleiche Schluessel wie FLEX_MODE_TEXT -- ein Test sichert das ab, damit die
+# beiden Maps nicht auseinanderlaufen.
+FLEX_MODE_SLUG: dict[int, str] = {
+    1:  "manual",
+    2:  "demand",
+    3:  "weekly_schedule",
+    5:  "away",
+    6:  "summer",
+    7:  "night",
+    12: "fireplace",
+}
+
+# Slug → Bitmask für Register 40169 (schreiben)
 # Quelle: UVC Controller Doku — "Start"-Bitmask für jeden Modus
 FLEX_MODE_TO_WRITE: dict[str, int] = {
-    "Manuell":          0x0004,
-    "Bedarfsgesteuert": 0x0002,
-    "Wochenprogramm":   0x0008,
-    "Urlaub":           0x0010,
-    "Sommer":           0x0800,
-    "Nacht":            0x0020,
-    "Kaminbetrieb":     0x0040,
+    "manual":          0x0004,
+    "demand":          0x0002,
+    "weekly_schedule": 0x0008,
+    "away":            0x0010,
+    "summer":          0x0800,
+    "night":           0x0020,
+    "fireplace":       0x0040,
 }
 
 # "End"-Bitmask zum expliziten Beenden spezieller Modi (0x8000 | Start-Bitmask)
 # Wird genutzt wenn Modus-Wechsel ein explizites Ende des Vorgänger-Modus erfordert
 FLEX_MODE_TO_END: dict[str, int] = {
-    "Urlaub":       0x8010,
-    "Sommer":       0x8800,
-    "Nacht":        0x8020,
-    "Kaminbetrieb": 0x8040,
-    "Bypass":       0x8080,  # Manueller Bypass Ende
+    "away":      0x8010,
+    "summer":    0x8800,
+    "night":     0x8020,
+    "fireplace": 0x8040,
+    "bypass":    0x8080,  # Manueller Bypass Ende
 }
 
 # Lüftungsstufen-Verhältnisse (aus Betriebsanleitung profi-air 250/360 flex)

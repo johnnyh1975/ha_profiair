@@ -6,12 +6,12 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/johnnyh1975/ha-profiair",
+  "documentation": "https://github.com/johnnyh1975/ha_profiair",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/johnnyh1975/ha-profiair/issues",
+  "issue_tracker": "https://github.com/johnnyh1975/ha_profiair/issues",
   "quality_scale": "platinum",
   "requirements": [
     "pymodbus>=3.10.0"
   ],
-  "version": "2.0.7"
+  "version": "2.1.0"
 }
