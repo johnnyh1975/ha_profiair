@@ -110,3 +110,78 @@ class TestSlugMigration2_1_0:
             # Die Mapping-Tabelle muss drin stehen, sonst nützt der Hinweis nichts
             assert "level_4" in issue["description"]
             assert "manual_open" in issue["description"]
+
+
+class TestRepairIssueTranslationsResolve:
+    """Jeder per async_create_issue erzeugte translation_key MUSS einen
+    Übersetzungstext (title + description) in allen Sprachdateien haben.
+
+    Hintergrund: Fehlt der Text, zeigt Home Assistant den ROHEN Schlüssel an
+    (z.B. 'slug_states_2_1_0') statt der Meldung. Bei einem reinen
+    Informations-Issue (is_fixable=False) ist der Text die ganze Funktion --
+    ohne ihn ist das Issue wertlos. Genau das trat bei 2.1.0 auf.
+
+    Dieser Test scannt den Quelltext nach allen translation_key-Werten von
+    async_create_issue-Aufrufen und stellt sicher, dass jeder in strings.json
+    UND jeder Übersetzung mit nichtleerem title/description hinterlegt ist.
+    """
+
+    def _issue_keys_from_code(self) -> set[str]:
+        import ast
+        keys: set[str] = set()
+        for pyfile in _CC.glob("*.py"):
+            tree = ast.parse(pyfile.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call)
+                        and getattr(node.func, "attr", "") == "async_create_issue"):
+                    for kw in node.keywords:
+                        if kw.arg == "translation_key" and isinstance(kw.value, ast.Constant):
+                            keys.add(kw.value.value)
+                        # translation_key=_SLUG_MIGRATION_ISSUE (Name) auflösen
+                        elif kw.arg == "translation_key" and isinstance(kw.value, ast.Name):
+                            # Konstante im selben Modul suchen
+                            for n in ast.walk(tree):
+                                if (isinstance(n, ast.Assign)
+                                        and any(getattr(t, "id", "") == kw.value.id for t in n.targets)
+                                        and isinstance(n.value, ast.Constant)):
+                                    keys.add(n.value.value)
+        return keys
+
+    def test_all_issue_keys_have_translations(self):
+        issue_keys = self._issue_keys_from_code()
+        assert issue_keys, "keine async_create_issue translation_keys gefunden"
+
+        for path in TRANSLATION_FILES:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            issues = data.get("issues", {})
+            for key in issue_keys:
+                assert key in issues, (
+                    f"{path.name}: Repair-Issue '{key}' wird im Code erzeugt, "
+                    f"hat aber keinen Übersetzungstext -> HA zeigt den rohen "
+                    f"Schlüssel an"
+                )
+                entry = issues[key]
+                assert entry.get("title"), f"{path.name}: '{key}' hat keinen title"
+                # Zwei gültige Formen:
+                #  - nicht-fixbares Info-Issue: title + description direkt
+                #  - fixbares Issue: Text steckt im fix_flow.step-Block
+                has_description = bool(entry.get("description"))
+                has_fix_flow = bool(entry.get("fix_flow"))
+                assert has_description or has_fix_flow, (
+                    f"{path.name}: '{key}' hat weder eine 'description' (Info-Issue) "
+                    f"noch einen 'fix_flow' (fixbares Issue) -> HA hätte keinen Text "
+                    f"anzuzeigen"
+                )
+
+
+    def test_slug_migration_issue_has_inline_description(self):
+        """slug_states_2_1_0 ist is_fixable=False -> es MUSS title+description
+        direkt tragen (kein fix_flow), sonst zeigt HA den rohen Schlüssel.
+        Genau dieses Symptom trat bei 2.1.0 in einer Installation auf."""
+        for path in TRANSLATION_FILES:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            entry = data["issues"]["slug_states_2_1_0"]
+            assert entry.get("title"), f"{path.name}: title fehlt"
+            assert entry.get("description"), f"{path.name}: description fehlt"
+            # Die Mapping-Tabelle muss enthalten sein
+            assert "level_4" in entry["description"]

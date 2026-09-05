@@ -858,3 +858,65 @@ class TestT5NoSensorSentinel:
         assert idx >= 0
         block = source[idx-120:idx+60]
         assert "== 0.0" in block  # nur exakte Sentinels, kein < / >
+
+
+class TestFlexTimeSyncTimezone:
+    """Regression für Issue #19: die flex-Zeitsynchronisation stellte die
+    Geräteuhr um den Zeitzonen-Offset falsch.
+
+    Die flex-Firmware interpretiert Register 40111 als LOKALE Zeit. Der alte
+    Code schrieb einen rohen UTC-Epoch (int(time.time())), wodurch die Uhr in
+    Europe/Berlin 2 h (Sommer) bzw. 1 h (Winter) nachging. Der touch-Pfad war
+    von Anfang an korrekt (dt_util.now()); nur der flex-Pfad nutzte UTC.
+    """
+
+    def _sync_source(self) -> str:
+        import ast
+        source = open(FLEX_COORD_PY).read()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == "_async_sync_time":
+                return "\n".join(source.splitlines()[node.lineno - 1:node.end_lineno])
+        return ""
+
+    def test_uses_ha_timezone_not_raw_utc(self):
+        """Muss dt_util.now() (HA-Zeitzone) verwenden, nicht int(time.time())."""
+        src = self._sync_source()
+        assert "dt_util.now()" in src, "Zeitsync muss die HA-Zeitzone verwenden"
+        assert "int(_time.time())" not in src, (
+            "roher UTC-Epoch (int(time.time())) stellt die Geräteuhr falsch -- Issue #19"
+        )
+
+    def test_adds_utc_offset(self):
+        """Der UTC-Offset muss aufaddiert werden, damit die Firmware die als
+        lokal interpretierte Zeit korrekt erhält -- inklusive DST."""
+        src = self._sync_source()
+        assert "utcoffset()" in src
+        assert "total_seconds()" in src
+
+    def test_offset_math_summer_and_winter(self):
+        """Die konkrete Rechnung: local_epoch = utc_timestamp + utcoffset.
+
+        Sommer (CEST, +2h): Geräteuhr muss 7200 s vor UTC liegen.
+        Winter (CET, +1h):  Geräteuhr muss 3600 s vor UTC liegen.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        def local_epoch(dt_local):
+            off = dt_local.utcoffset()
+            return int(dt_local.timestamp() + (off.total_seconds() if off else 0))
+
+        # Ein fester UTC-Moment, in zwei Zonen-Offsets ausgedrückt
+        utc_moment = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
+        summer = utc_moment.astimezone(timezone(timedelta(hours=2)))  # CEST
+        winter_moment = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        winter = winter_moment.astimezone(timezone(timedelta(hours=1)))  # CET
+
+        assert local_epoch(summer) - int(utc_moment.timestamp()) == 7200
+        assert local_epoch(winter) - int(winter_moment.timestamp()) == 3600
+
+    def test_analytics_timestamp_still_uses_utc(self):
+        """Der analytics-Timestamp (nicht das Geräteregister) darf weiterhin
+        UTC verwenden -- nur der Register-Write war betroffen."""
+        source = open(FLEX_COORD_PY).read()
+        assert "timestamp=_time.time()" in source

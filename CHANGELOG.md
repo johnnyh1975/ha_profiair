@@ -5,6 +5,23 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.1.1] – 2026-09
+
+### Bugfix: Geräteuhr der flex/flat-Geräte ging falsch (Issue #19)
+
+- **Zeitsynchronisation schrieb UTC statt lokaler Zeit.** Der flex/flat-Pfad
+  schrieb einen rohen UTC-Epoch (`int(time.time())`) in Register 40111 — die
+  Firmware interpretiert dieses Register aber als **lokale** Zeit. Dadurch ging
+  die Geräteuhr um den Zeitzonen-Offset nach (in Europe/Berlin 2 h im Sommer,
+  1 h im Winter), bei jedem HA-Start und alle 24 h erneut. Der Fix verwendet
+  jetzt — wie der touch-Pfad von Anfang an — die HA-Zeitzone (`dt_util.now()`)
+  und addiert den aktuellen UTC-Offset auf, wodurch Sommer-/Winterzeit
+  automatisch korrekt bleibt. Danke an @wfdbcw4wdn-ops für die präzise Analyse
+  inkl. Register- und Ursachennachweis.
+- Der analytics-interne Zeitstempel bleibt bewusst UTC — nur der Register-Write
+  ans Gerät war betroffen. 4 neue Regressionstests (Sommer-/Winter-Offset).
+
+
 ## [2.1.0] – 2026-07
 
 ### ⚠️ BREAKING CHANGE: Entity-Zustände sind jetzt Slugs

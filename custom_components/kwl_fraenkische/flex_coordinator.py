@@ -30,6 +30,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.client.mixin import ModbusClientMixin
@@ -1157,7 +1158,18 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             async with self._lock:
                 if not self._client.connected:
                     return
-                await self._write_uint32(110, int(_time.time()))  # offset 110 = 40111
+                # Die flex-Firmware interpretiert Register 40111 als LOKALE Zeit,
+                # nicht als UTC. Ein roher UTC-Epoch (int(time.time())) stellt die
+                # Geräteuhr daher um den Zeitzonen-Offset falsch (-2 h im Sommer,
+                # -1 h im Winter in Europe/Berlin). Analog zum touch-Pfad wird die
+                # HA-Zeitzone verwendet und der aktuelle UTC-Offset aufaddiert --
+                # das hält Sommer-/Winterzeit automatisch korrekt.
+                _now = dt_util.now()  # timezone-aware, in der HA-Zeitzone
+                _offset = _now.utcoffset()
+                local_epoch = int(
+                    _now.timestamp() + (_offset.total_seconds() if _offset else 0)
+                )
+                await self._write_uint32(110, local_epoch)  # offset 110 = 40111
             if self._time_sync_failures:
                 _LOGGER.info(
                     "KWL Flex: Zeitsynchronisation wieder erfolgreich nach %d Fehlversuchen",

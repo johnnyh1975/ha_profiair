@@ -4,7 +4,7 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
 [![Validate](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml/badge.svg)](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
@@ -166,9 +166,8 @@ Settings → Devices & Services → KWL → Configure → select your model. Thi
 **Step 2 — Confirm device**
 The integration reads the unit type, firmware version, and fan switch position from the device. A confirmation screen shows the detected model. Press **Submit** to create the entry.
 
-No credentials required. No power values are entered during setup — measured values are not yet available for flex models. They can be added later in **Options** when you have clamp-metered your installation.
+No credentials required. No power values are entered during setup. For the **130 flat**, measured defaults ship with the integration (16 / 21 / 33 / 44 W, contributed by a community member with a plug-in energy meter). For the other flex/flat models no measured values exist yet — add your own in **Options** once you have metered your installation, and please share them so they can become defaults for everyone.
 
-> **Fan level control** is not yet available for flex/flat devices in v2.0.0. The FC16 write block format is pending confirmation. All read sensors, mode selection, filter management, and alarm control are fully functional. Fan level control comes in v2.0.1.
 
 ---
 
@@ -302,7 +301,16 @@ This prevents the device firmware from fighting the HA automation during the nig
 
 ### Automation YAML
 
-Full `kwl_sommer_ein.yaml` and `kwl_sommer_aus.yaml` are in the `automations/` folder of this repository.
+The automation is yours to build — the integration deliberately does not ship
+one, because the right trigger conditions depend on your climate, your helpers
+and your comfort preferences. The conditions described above are what a working
+setup needs: the fixed 22:00–07:00 window, a ≥3 K outdoor advantage, a dew-point
+guard, and the `kwl_sommertag` gate. Set `fan.<your_model>_fan` to preset_mode
+`level_4` when they are all met, and back to `level_1`/`level_2` at 07:00.
+
+What the integration *does* give you is the feedback loop: `night_cooling_last_k`
+tells you whether your automation actually cooled anything, and
+`night_cooling_inactive_nights_7d` catches it silently failing.
 
 ---
 
@@ -570,10 +578,17 @@ The bypass has two configurable firmware thresholds in the installer section:
 ## Energy dashboard
 
 1. Settings → Dashboards → Energy → Add Consumption
-2. Add `sensor.kwl_energie_stufe_1` through `_4` as individual sources
-3. Label Stufe 1 through Stufe 4
+2. Add `sensor.<your_model>_energy_total` as a single source — this is the
+   simplest setup and gives you one combined entry.
+   (If you want the breakdown, add `energy_level_1` … `_4` individually instead.)
 
-The kWh values are calculated from operating hours × configured watt values. Measure actual power at each level for best accuracy.
+Entity IDs follow the `{model_slug}_{key}` scheme, e.g.
+`sensor.profi_air_400_energy_total`.
+
+The kWh values are calculated from operating hours × configured watt values.
+Measure actual power at each level for best accuracy. On flex/flat units the
+energy sensors are marked "(estimated)" — those devices report no per-level
+hours over Modbus, so the integration counts level time itself.
 
 ---
 
@@ -587,9 +602,6 @@ Verify Modbus TCP port 502 is reachable: `nc -zv YOUR_KWL_IP 502` or a Modbus sc
 
 **Unknown device type error during setup (flex)**
 The integration read a Modbus unit type code it does not recognise. Currently supported: code 11 (250 flex), code 15 (360 flex), code 4 (180 flat), code 27 (130 flat). Note the code and the raw System-ID shown in the error and open an issue — new unit types can be added quickly.
-
-**Fan level control unavailable on flex**
-This is a known v2.0.0 limitation. The FC16 write block format for level changes is pending confirmation from a hardware test. All read entities and mode selection work normally. Fan level control comes in v2.0.1.
 
 **Installer credentials rejected**
 Try factory defaults `install` / `konfig12`. If they fail, retrieve the current password from `.storage/core.config_entries` in your HA config directory.
