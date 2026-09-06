@@ -20,4 +20,4 @@ pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 pymodbus==3.13.1
 aiohttp==3.11.11
-homeassistant==2025.1.4
+homeassistant==2026.9.0
