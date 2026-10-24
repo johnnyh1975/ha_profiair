@@ -29,12 +29,15 @@ PLATFORMS = [
     Platform.BUTTON,
 ]
 
-# Das lite-Gerät (REST) bietet nur Lüftung, Sensoren und Alarme -- keine
-# Zahlen-, Auswahl- oder Button-Entitäten.
+# Das lite-Gerät (REST): Lüftung, Sensoren, Alarme sowie Sollwert,
+# Betriebsart und Tastensperre -- keine Buttons.
 PLATFORMS_LITE = [
     Platform.FAN,
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SWITCH,
 ]
 
 # Union-Typ für alle Coordinator-Familien

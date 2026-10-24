@@ -30,7 +30,9 @@ verwendet **ausschließlich die lokale API** und benötigt keine Cloud.
 | Registertemperatur | `tw` ÷ 10 | standardmäßig deaktiviert; `< 0` = nicht vorhanden |
 | Alarme | `a` (Liste) | Text und „Alarm aktiv“ (ohne reine Kontaktanwesenheit) |
 | Kontakt (Fenster) aktiv | `a` enthält `CP` | Gerät ist dann gesperrt |
-| Tastensperre | `kl` | Diagnose |
+| Tastensperre (Schalter) | `kl`, Befehl `set/lock/on\|off` | schreibbar |
+| Sollwert (Zahl) | `sp` ÷ 10, Befehl `set/setpoint` mit `{"temp": °C × 10}` | 5–40 °C, Schritt 0,5, begrenzt durch `spl`/`sph`; **standardmäßig deaktiviert** |
+| Betriebsart (Auswahl) | `wm` (3 = Winter, 5 = Sommer), Befehl `set/mode/heating\|cooling` | schaltet das Gerät zuerst ein, wie `innova-controls`; **standardmäßig deaktiviert** |
 
 Nicht verfügbar über diese Schnittstelle: Volumenstrom, Lüfterdrehzahl,
 Filter, Bypass, Außen-/Fortlufttemperatur, Energie. Es gibt daher weder
@@ -41,10 +43,13 @@ Bewusst **nicht** umgesetzt:
 - `rs485/write`, `setup`, `network/set` — sie schreiben Geräteregister bzw.
   Netzwerkkonfiguration und könnten das Gerät unbrauchbar machen. Ein Test
   stellt sicher, dass der Client keine solche Methode anbietet.
-- Sollwert (`set/setpoint`), Betriebsart Winter/Sommer (`set/mode/*`),
-  Wochenprogramm (`calendar/*`), Tastensperre schreiben, Uhr setzen — wirken nur
-  mit bestimmter Hardware (Hydronik-Batterie) bzw. brauchen die Cloud-Einrichtung
-  und sind für ein Lüftungsgerät nicht belegt.
+- Wochenprogramm (`calendar/*`) und Uhr setzen (`set/time`): brauchen laut App
+  die Cloud-Einrichtung bzw. sind für ein Lüftungsgerät nicht belegt.
+
+Sollwert und Betriebsart wirken laut App nur mit „Hydronik-Batterie“
+(Wasser-Register); ob und wie das beim lite-Lüftungsgerät relevant ist, ist
+unbekannt. Deshalb sind beide Entitäten zunächst deaktiviert und müssen von
+Hand aktiviert werden.
 
 ## Wire-Format (so wie die App es sendet)
 

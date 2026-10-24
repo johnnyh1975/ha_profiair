@@ -20,18 +20,28 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.components.fan import FanEntity, FanEntityFeature
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
+from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .lite_client import FUNCTION_NAMES, KWLLiteData
+from .lite_client import (
+    FUNCTION_NAMES,
+    SEASON_NAMES,
+    SETPOINT_MAX,
+    SETPOINT_MIN,
+    SETPOINT_STEP,
+    KWLLiteData,
+)
 from .lite_coordinator import KWLLiteCoordinator
 
 PARALLEL_UPDATES = 1
@@ -204,13 +214,6 @@ LITE_BINARY_SENSORS: tuple[KWLLiteBinarySensorDescription, ...] = (
         icon="mdi:window-open-variant",
         value_fn=lambda d: d.contact_presence,
     ),
-    KWLLiteBinarySensorDescription(
-        key="key_lock",
-        translation_key="lite_key_lock",
-        icon="mdi:lock",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.key_lock,
-    ),
 )
 
 
@@ -232,6 +235,87 @@ class KWLLiteBinarySensor(_LiteEntity, BinarySensorEntity):
         return None if data is None else self.entity_description.value_fn(data)
 
 
+# ── Steuerung: Sollwert, Betriebsart, Tastensperre ────────────────────────────
+# Aus der App und innova-controls übernommen. Sollwert und Winter/Sommer wirken
+# laut App nur mit "Hydronik-Batterie" und sind deshalb standardmäßig
+# deaktiviert; die Tastensperre ist bei jedem Gerät sinnvoll.
+
+class KWLLiteSetpoint(_LiteEntity, NumberEntity):
+    _attr_translation_key = "lite_setpoint"
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_native_step = SETPOINT_STEP
+    _attr_mode = NumberMode.BOX
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:thermometer"
+
+    def __init__(self, coordinator: KWLLiteCoordinator) -> None:
+        super().__init__(coordinator, "setpoint")
+        self.entity_id = f"number.{coordinator.model_slug}_setpoint"
+
+    @property
+    def native_min_value(self) -> float:
+        data = self.coordinator.data
+        low = data.setpoint_min if data is not None else None
+        return max(SETPOINT_MIN, low) if low is not None else SETPOINT_MIN
+
+    @property
+    def native_max_value(self) -> float:
+        data = self.coordinator.data
+        high = data.setpoint_max if data is not None else None
+        return min(SETPOINT_MAX, high) if high is not None else SETPOINT_MAX
+
+    @property
+    def native_value(self) -> float | None:
+        data = self.coordinator.data
+        return None if data is None else data.setpoint
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_setpoint(value)
+
+
+class KWLLiteSeason(_LiteEntity, SelectEntity):
+    """Winter (heating) / Sommer (cooling)."""
+
+    _attr_translation_key = "lite_season"
+    _attr_options = list(SEASON_NAMES)
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:sun-snowflake-variant"
+
+    def __init__(self, coordinator: KWLLiteCoordinator) -> None:
+        super().__init__(coordinator, "season")
+        self.entity_id = f"select.{coordinator.model_slug}_season"
+
+    @property
+    def current_option(self) -> str | None:
+        data = self.coordinator.data
+        return None if data is None else data.season
+
+    async def async_select_option(self, option: str) -> None:
+        if option in SEASON_NAMES:
+            await self.coordinator.async_set_season(option)
+
+
+class KWLLiteKeyLock(_LiteEntity, SwitchEntity):
+    _attr_translation_key = "lite_key_lock"
+    _attr_icon = "mdi:lock"
+
+    def __init__(self, coordinator: KWLLiteCoordinator) -> None:
+        super().__init__(coordinator, "key_lock")
+        self.entity_id = f"switch.{coordinator.model_slug}_key_lock"
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        return None if data is None else data.key_lock
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_key_lock(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_key_lock(False)
+
+
 # ── Setup-Funktionen für die Plattform-Module ─────────────────────────────────
 
 async def async_setup_lite_fan(
@@ -250,3 +334,21 @@ async def async_setup_lite_binary_sensors(
     coordinator: KWLLiteCoordinator, async_add_entities: AddEntitiesCallback
 ) -> None:
     async_add_entities([KWLLiteBinarySensor(coordinator, d) for d in LITE_BINARY_SENSORS])
+
+
+async def async_setup_lite_numbers(
+    coordinator: KWLLiteCoordinator, async_add_entities: AddEntitiesCallback
+) -> None:
+    async_add_entities([KWLLiteSetpoint(coordinator)])
+
+
+async def async_setup_lite_selects(
+    coordinator: KWLLiteCoordinator, async_add_entities: AddEntitiesCallback
+) -> None:
+    async_add_entities([KWLLiteSeason(coordinator)])
+
+
+async def async_setup_lite_switches(
+    coordinator: KWLLiteCoordinator, async_add_entities: AddEntitiesCallback
+) -> None:
+    async_add_entities([KWLLiteKeyLock(coordinator)])

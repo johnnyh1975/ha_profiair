@@ -44,14 +44,17 @@ abgeleitet, noch nicht an echter Hardware bestätigt** — siehe
 - Automatische Erkennung im Config Flow (nach touch, vor Modbus), rein lokal,
   ohne Cloud und ohne Zugangsdaten.
 - Entitäten: Lüftung (Ein/Aus + Preset Auto/Nacht/Minimal/Maximal),
-  Raumtemperatur, Raumfeuchte, Luftqualität (Stufe 1–5), Alarme, Fenster-
-  kontakt, Tastensperre, optional Registertemperatur.
+  Raumtemperatur, Raumfeuchte, Luftqualität (Stufe 1–5), Alarme, Fensterkontakt,
+  Tastensperre (Schalter), optional Registertemperatur. Sollwert (Zahl) und
+  Betriebsart Winter/Sommer (Auswahl) sind vorhanden, aber standardmäßig
+  deaktiviert (wirken laut App nur mit Hydronik-Batterie); der Wechsel der
+  Betriebsart schaltet das Gerät zuerst ein (Muster aus `innova-controls`).
 - Nicht verfügbar über diese Schnittstelle: Volumenstrom, Drehzahl, Filter,
   Bypass, Energie. Bewusst nicht umgesetzt: alle Befehle, die Geräteregister
   oder Netzwerkeinstellungen schreiben.
 - Diagnose-Download enthält das rohe Status-`RESULT` zur Validierung.
 - Bestehende touch- und flex/flat-Einträge bleiben unberührt.
-- 79 neue Tests (`tests/test_phase15_lite_rest.py`), darunter der Client gegen
+- 101 neue Tests (`tests/test_phase15_lite_rest.py`), darunter der Client gegen
   einen lokalen Mock-Server.
 
 ## [2.1.1] – 2026-09

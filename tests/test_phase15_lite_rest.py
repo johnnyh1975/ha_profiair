@@ -194,6 +194,15 @@ class _MockDevice:
         if request.method == "POST" and path.startswith("set/function/"):
             result["fn"] = {"auto": 1, "night": 2, "min": 3, "max": 4}[path.rsplit("/", 1)[1]]
             return web.json_response({"success": True})
+        if request.method == "POST" and path == "set/setpoint":
+            result["sp"] = json.loads(body)["temp"]
+            return web.json_response({"success": True})
+        if request.method == "POST" and path in ("set/mode/heating", "set/mode/cooling"):
+            result["wm"] = 3 if path.endswith("heating") else 5
+            return web.json_response({"success": True})
+        if request.method == "POST" and path in ("set/lock/on", "set/lock/off"):
+            result["kl"] = 1 if path.endswith("on") else 0
+            return web.json_response({"success": True})
         return web.json_response({"success": False, "error": "E012"})
 
 
@@ -284,14 +293,63 @@ class TestClientWire:
             with pytest.raises(_client_mod().LiteConnectionError):
                 await client.get_status()
 
-    def test_client_exposes_only_the_two_harmless_writes(self):
+    @pytest.mark.asyncio
+    async def test_setpoint_wire_format_is_integer_tenths(self, device):
+        await device.client.async_set_setpoint(22.5)
+        method, path, ctype, body = device.requests[-1]
+        assert (method, path) == ("POST", "/api/v/1/set/setpoint")
+        assert ctype.startswith("application/x-www-form-urlencoded")
+        assert json.loads(body) == {"temp": 225}
+        assert isinstance(json.loads(body)["temp"], int)
+        assert (await device.client.get_status()).setpoint == 22.5
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", [4.9, 40.5, -1, 100])
+    async def test_setpoint_out_of_range_rejected_before_request(self, device, value):
+        with pytest.raises(ValueError):
+            await device.client.async_set_setpoint(value)
+        assert device.requests == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value,tenths", [(5.0, 50), (40.0, 400), (21.3, 213)])
+    async def test_setpoint_rounding_and_bounds(self, device, value, tenths):
+        await device.client.async_set_setpoint(value)
+        assert json.loads(device.requests[-1][3]) == {"temp": tenths}
+
+    @pytest.mark.asyncio
+    async def test_season_roundtrip_without_body(self, device):
+        await device.client.async_set_season("cooling")
+        assert device.requests[-1][:2] == ("POST", "/api/v/1/set/mode/cooling")
+        assert device.requests[-1][3] == ""
+        assert (await device.client.get_status()).season == "cooling"
+        await device.client.async_set_season("heating")
+        assert (await device.client.get_status()).season == "heating"
+
+    @pytest.mark.asyncio
+    async def test_unknown_season_rejected(self, device):
+        with pytest.raises(ValueError):
+            await device.client.async_set_season("auto")
+        assert device.requests == []
+
+    @pytest.mark.asyncio
+    async def test_key_lock_roundtrip(self, device):
+        await device.client.async_set_key_lock(True)
+        assert device.requests[-1][:2] == ("POST", "/api/v/1/set/lock/on")
+        assert (await device.client.get_status()).key_lock is True
+        await device.client.async_set_key_lock(False)
+        assert (await device.client.get_status()).key_lock is False
+
+    def test_client_exposes_only_the_harmless_writes(self):
         """Absicherung: keine Schreibmethode für rs485/setup/network (könnten
         Geräteregister oder Netzwerkkonfiguration zerstören)."""
         writers = {
             n for n in dir(_client_mod().KWLLiteClient)
             if n.startswith("async_")
         }
-        assert writers == {"async_set_power", "async_set_function"}
+        assert writers == {
+            "async_set_power", "async_set_function", "async_set_setpoint",
+            "async_set_season", "async_set_key_lock",
+        }
 
     def test_dangerous_endpoints_are_not_requested_anywhere_in_code(self):
         for path in _CC.glob("lite_*.py"):
@@ -449,6 +507,38 @@ class TestCoordinator:
             await c.async_set_power(True)
         c.async_request_refresh.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_season_powers_on_first_when_device_is_off(self):
+        cm = _client_mod()
+        client = MagicMock(async_set_power=AsyncMock(), async_set_season=AsyncMock())
+        order = []
+        client.async_set_power.side_effect = lambda on: order.append(("power", on))
+        client.async_set_season.side_effect = lambda s: order.append(("season", s))
+        c = _coordinator(client)
+        c.data = cm.parse_status(_status_payload(ps=0))
+        await c.async_set_season("cooling")
+        assert order == [("power", True), ("season", "cooling")]
+
+    @pytest.mark.asyncio
+    async def test_season_does_not_power_on_when_already_on(self):
+        cm = _client_mod()
+        client = MagicMock(async_set_power=AsyncMock(), async_set_season=AsyncMock())
+        c = _coordinator(client)
+        c.data = cm.parse_status(_status_payload(ps=1))
+        await c.async_set_season("heating")
+        client.async_set_power.assert_not_awaited()
+        client.async_set_season.assert_awaited_once_with("heating")
+
+    @pytest.mark.asyncio
+    async def test_setpoint_and_key_lock_write_and_refresh(self):
+        client = MagicMock(async_set_setpoint=AsyncMock(), async_set_key_lock=AsyncMock())
+        c = _coordinator(client)
+        await c.async_set_setpoint(21.5)
+        await c.async_set_key_lock(True)
+        client.async_set_setpoint.assert_awaited_once_with(21.5)
+        client.async_set_key_lock.assert_awaited_once_with(True)
+        assert c.async_request_refresh.await_count == 2
+
     def test_scan_interval_is_clamped_in_source(self):
         src = (_CC / "lite_coordinator.py").read_text(encoding="utf-8")
         assert "max(" in src and "LITE_MIN_SCAN_INTERVAL" in src
@@ -547,11 +637,66 @@ class TestEntities:
             d.key: _ent().KWLLiteBinarySensor(coord, d).is_on
             for d in _ent().LITE_BINARY_SENSORS
         }
-        assert values == {"alarm_active": False, "contact_presence": True, "key_lock": True}
+        assert values == {"alarm_active": False, "contact_presence": True}
+
+    def test_setpoint_entity(self):
+        data = _client_mod().parse_status(_status_payload(sp=225, spl=100, sph=300))
+        sp = _ent().KWLLiteSetpoint(_lite_coordinator_with(data))
+        assert sp.native_value == 22.5
+        assert (sp.native_min_value, sp.native_max_value) == (10.0, 30.0)
+        assert sp._attr_native_step == 0.5
+        assert sp._attr_entity_registry_enabled_default is False
+
+    def test_setpoint_limits_never_exceed_client_bounds_or_default_without_data(self):
+        wide = _client_mod().parse_status(_status_payload(spl=0, sph=900))
+        sp = _ent().KWLLiteSetpoint(_lite_coordinator_with(wide))
+        assert (sp.native_min_value, sp.native_max_value) == (5.0, 40.0)
+        none = _ent().KWLLiteSetpoint(_lite_coordinator_with(None))
+        assert (none.native_min_value, none.native_max_value) == (5.0, 40.0)
+        assert none.native_value is None
+
+    @pytest.mark.asyncio
+    async def test_setpoint_command(self):
+        coord = _lite_coordinator_with(None)
+        coord.async_set_setpoint = AsyncMock()
+        await _ent().KWLLiteSetpoint(coord).async_set_native_value(21.0)
+        coord.async_set_setpoint.assert_awaited_once_with(21.0)
+
+    def test_season_entity(self):
+        data = _client_mod().parse_status(_status_payload(wm=5))
+        sel = _ent().KWLLiteSeason(_lite_coordinator_with(data))
+        assert sel.current_option == "cooling"
+        assert sel._attr_options == ["heating", "cooling"]
+        assert sel._attr_entity_registry_enabled_default is False
+        assert _ent().KWLLiteSeason(_lite_coordinator_with(None)).current_option is None
+
+    @pytest.mark.asyncio
+    async def test_season_command_ignores_unknown_option(self):
+        coord = _lite_coordinator_with(None)
+        coord.async_set_season = AsyncMock()
+        sel = _ent().KWLLiteSeason(coord)
+        await sel.async_select_option("heating")
+        await sel.async_select_option("auto")
+        coord.async_set_season.assert_awaited_once_with("heating")
+
+    @pytest.mark.asyncio
+    async def test_key_lock_switch(self):
+        coord = _lite_coordinator_with(_client_mod().parse_status(_status_payload(kl=1)))
+        coord.async_set_key_lock = AsyncMock()
+        sw = _ent().KWLLiteKeyLock(coord)
+        assert sw.is_on is True
+        await sw.async_turn_off()
+        coord.async_set_key_lock.assert_awaited_with(False)
+        await sw.async_turn_on()
+        coord.async_set_key_lock.assert_awaited_with(True)
+        assert _ent().KWLLiteKeyLock(_lite_coordinator_with(None)).is_on is None
 
     def test_unique_ids_are_unique(self):
         coord = _lite_coordinator_with(None)
-        ids = [_ent().KWLLiteFan(coord)._attr_unique_id]
+        ids = [_ent().KWLLiteFan(coord)._attr_unique_id,
+               _ent().KWLLiteSetpoint(coord)._attr_unique_id,
+               _ent().KWLLiteSeason(coord)._attr_unique_id,
+               _ent().KWLLiteKeyLock(coord)._attr_unique_id]
         ids += [_ent().KWLLiteSensor(coord, d)._attr_unique_id for d in _ent().LITE_SENSORS]
         ids += [_ent().KWLLiteBinarySensor(coord, d)._attr_unique_id for d in _ent().LITE_BINARY_SENSORS]
         assert len(ids) == len(set(ids))
@@ -560,9 +705,16 @@ class TestEntities:
 # ── Verdrahtung ───────────────────────────────────────────────────────────────
 
 class TestWiring:
-    def test_lite_uses_only_fan_sensor_binary_sensor_platforms(self):
+    def test_lite_platforms(self):
         init = importlib.import_module("custom_components.kwl_fraenkische")
-        assert [str(p) for p in init.PLATFORMS_LITE] == ["fan", "sensor", "binary_sensor"]
+        assert [str(p) for p in init.PLATFORMS_LITE] == [
+            "fan", "sensor", "binary_sensor", "number", "select", "switch",
+        ]
+
+    def test_switch_platform_is_only_forwarded_for_lite(self):
+        init = importlib.import_module("custom_components.kwl_fraenkische")
+        assert "switch" not in [str(p) for p in init.PLATFORMS]
+        assert (_CC / "switch.py").exists()
 
     def test_platforms_for_selects_by_protocol(self):
         init = importlib.import_module("custom_components.kwl_fraenkische")
@@ -600,6 +752,9 @@ class TestWiring:
         fan = strings["entity"]["fan"]["lite_fan"]
         assert set(fan["state_attributes"]["preset_mode"]["state"]) == set(ent.FUNCTION_NAMES)
         assert "confirm_lite" in strings["config"]["step"]
+        assert "lite_setpoint" in strings["entity"]["number"]
+        assert set(strings["entity"]["select"]["lite_season"]["state"]) == set(ent.SEASON_NAMES)
+        assert "lite_key_lock" in strings["entity"]["switch"]
 
     def test_diagnostics_has_lite_branch_without_watt_map(self):
         diag = importlib.import_module("custom_components.kwl_fraenkische.diagnostics")

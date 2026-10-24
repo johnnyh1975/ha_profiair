@@ -51,6 +51,13 @@ ALARM_CONTACT_PRESENCE: Final[str] = "CP"
 
 DEFAULT_TIMEOUT: Final[float] = 10.0
 
+# Sollwert-Grenzen der App (utils.js: 5–40 °C, Schritte 0,5). Das Gerät meldet
+# eigene Grenzen in RESULT.spl / RESULT.sph; sie begrenzen die Entität.
+SETPOINT_MIN: Final[float] = 5.0
+SETPOINT_MAX: Final[float] = 40.0
+SETPOINT_STEP: Final[float] = 0.5
+SEASON_NAMES: Final[tuple[str, ...]] = tuple(SEASON_CODE_TO_NAME.values())
+
 
 class LiteError(Exception):
     """Basisklasse für Fehler dieses Clients."""
@@ -301,6 +308,31 @@ class KWLLiteClient:
 
     async def async_set_power(self, on: bool) -> None:
         path = "power/on" if on else "power/off"
+        self._check_success(await self._request("POST", path), path)
+
+    async def async_set_setpoint(self, temperature: float) -> None:
+        """Setzt den Sollwert in °C (wie die App: ``{"temp": °C × 10}`` als int).
+
+        Wirkt laut App nur mit "Hydronik-Batterie".
+        """
+        if not SETPOINT_MIN <= temperature <= SETPOINT_MAX:
+            raise ValueError(
+                f"Sollwert {temperature} außerhalb {SETPOINT_MIN}–{SETPOINT_MAX} °C"
+            )
+        path = "set/setpoint"
+        body = {"temp": int(round(temperature * 10))}
+        self._check_success(await self._request("POST", path, body), path)
+
+    async def async_set_season(self, season: str) -> None:
+        """Setzt die Betriebsart (heating = Winter, cooling = Sommer)."""
+        if season not in SEASON_NAMES:
+            raise ValueError(f"Unbekannte Betriebsart: {season!r}")
+        path = f"set/mode/{season}"
+        self._check_success(await self._request("POST", path), path)
+
+    async def async_set_key_lock(self, on: bool) -> None:
+        """Sperrt bzw. entsperrt die Tasten am Gerät."""
+        path = "set/lock/on" if on else "set/lock/off"
         self._check_success(await self._request("POST", path), path)
 
     async def async_set_function(self, function: str) -> None:

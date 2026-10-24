@@ -41,6 +41,7 @@ class _BinarySensorEntity(_Entity): pass
 class _ButtonEntity(_Entity): pass
 class _SelectEntity(_Entity): pass
 class _NumberEntity(_Entity): pass
+class _SwitchEntity(_Entity): pass
 
 class _DataUpdateCoordinator:
     def __init__(self, *args, **kwargs): pass
@@ -105,6 +106,7 @@ class _Platform(metaclass=_AutoMemberMeta):
     NUMBER = "number"
     SELECT = "select"
     BUTTON = "button"
+    SWITCH = "switch"
 
 class _FanEntityFeature(metaclass=_AutoMemberMeta):
     PRESET_MODE = 1
@@ -175,6 +177,7 @@ _MODS = [
     "homeassistant.components.fan", "homeassistant.components.sensor",
     "homeassistant.components.binary_sensor", "homeassistant.components.button",
     "homeassistant.components.select", "homeassistant.components.number",
+    "homeassistant.components.switch",
     "homeassistant.exceptions", "homeassistant.util", "homeassistant.util.dt",
     # Ergaenzt: werden von repairs.py / config_flow.py importiert.
     "homeassistant.components.repairs", "homeassistant.helpers.issue_registry",
@@ -225,6 +228,10 @@ _num.NumberEntity = _NumberEntity
 _num.NumberEntityDescription = _EntityDescription
 _num.NumberMode = _NumberMode
 _num.NumberDeviceClass = MagicMock()
+
+import homeassistant.components.switch as _sw
+_sw.SwitchEntity = _SwitchEntity
+_sw.SwitchEntityDescription = _EntityDescription
 
 import homeassistant.helpers.entity as _ent
 _ent.EntityDescription = _EntityDescription

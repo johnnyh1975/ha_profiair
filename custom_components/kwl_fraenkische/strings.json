@@ -353,9 +353,6 @@
       },
       "lite_contact_presence": {
         "name": "Kontakt (Fenster) aktiv"
-      },
-      "lite_key_lock": {
-        "name": "Tastensperre"
       }
     },
     "number": {
@@ -382,6 +379,9 @@
       },
       "filter_total_days_flex": {
         "name": "Filterintervall"
+      },
+      "lite_setpoint": {
+        "name": "Sollwert"
       }
     },
     "select": {
@@ -437,6 +437,13 @@
           "night": "Nacht",
           "fireplace": "Kaminbetrieb"
         }
+      },
+      "lite_season": {
+        "name": "Betriebsart",
+        "state": {
+          "heating": "Winter (Heizen)",
+          "cooling": "Sommer (Kühlen)"
+        }
       }
     },
     "button": {
@@ -454,6 +461,11 @@
       },
       "alarm_clear": {
         "name": "Alarm quittieren"
+      }
+    },
+    "switch": {
+      "lite_key_lock": {
+        "name": "Tastensperre"
       }
     }
   },

@@ -353,9 +353,6 @@
       },
       "lite_contact_presence": {
         "name": "Contact (window) active"
-      },
-      "lite_key_lock": {
-        "name": "Key lock"
       }
     },
     "number": {
@@ -382,6 +379,9 @@
       },
       "filter_total_days_flex": {
         "name": "Filter Interval"
+      },
+      "lite_setpoint": {
+        "name": "Setpoint"
       }
     },
     "select": {
@@ -437,6 +437,13 @@
           "night": "Night",
           "fireplace": "Fireplace mode"
         }
+      },
+      "lite_season": {
+        "name": "Operating mode",
+        "state": {
+          "heating": "Winter (heating)",
+          "cooling": "Summer (cooling)"
+        }
       }
     },
     "button": {
@@ -454,6 +461,11 @@
       },
       "alarm_clear": {
         "name": "Clear Alarm"
+      }
+    },
+    "switch": {
+      "lite_key_lock": {
+        "name": "Key lock"
       }
     }
   },

@@ -110,3 +110,16 @@ class KWLLiteCoordinator(DataUpdateCoordinator[KWLLiteData]):
 
     async def async_set_function(self, function: str) -> None:
         await self._write(self.client.async_set_function, function)
+
+    async def async_set_setpoint(self, temperature: float) -> None:
+        await self._write(self.client.async_set_setpoint, temperature)
+
+    async def async_set_key_lock(self, on: bool) -> None:
+        await self._write(self.client.async_set_key_lock, on)
+
+    async def async_set_season(self, season: str) -> None:
+        """Wechselt Winter/Sommer. Ist das Gerät aus, wird es zuerst eingeschaltet
+        (Muster von innova-controls: ``set_heating``/``set_cooling``)."""
+        if self.data is not None and not self.data.powered:
+            await self._write(self.client.async_set_power, True)
+        await self._write(self.client.async_set_season, season)
