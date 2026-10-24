@@ -51,11 +51,17 @@ from .const import (
     DEFAULT_MODBUS_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    FLEX_ALARM_BIT_TO_CODE,
     FLEX_ALARM_TEXT,
+    FLEX_BL_STATE_APP_TEXT,
+    FLEX_BL_STATE_EXTRA_TEXT,
+    FLEX_BL_SUMMER,
     FLEX_MODE_SLUG,
     FLEX_MODE_TEXT,
     FLEX_MODE_TO_END,
     FLEX_MODE_TO_WRITE,
+    FLEX_UNIT_MODE_FIREPLACE,
+    FLEX_UNIT_MODE_NIGHT,
     FILTER_RPM_DRIFT_WARN_PCT,
     MODEL_DISPLAY,
     MODEL_PROFI_AIR_360_FLEX,
@@ -79,6 +85,14 @@ _FAST_BLOCKS: Final[tuple[tuple[int, int], ...]] = (
     (516, 2),   # 40517: Alarm Code (UINT32)  – 40515 (alarm clear) übersprungen
     (574, 2),   # 40575: CO2 ppm (UINT32)
 )
+
+# Optionaler Datensatz -- jeder Poll, aber fehlertolerant: 40169 Modus-Bitmaske
+# (prmRamIdxUnitMode, lesbar) und 40171 Alarm-Bitmaske (prmRamIdxAlarm1).
+# Beide kennt die Hersteller-App als Lesewerte (Cockpit 1.0.23), die offizielle
+# Modbus-Doku führt sie nicht. Lässt sich der Block auf einer Firmware nicht
+# lesen, läuft die Integration wie bisher nur mit den Fast-Blocks weiter.
+_OPTIONAL_BLOCK: Final[tuple[int, int]] = (168, 4)
+_OPTIONAL_FAIL_LIMIT: Final[int] = 3   # Fehlversuche, danach nicht mehr versuchen
 
 # Quasi-statischer Datensatz — alle _POLL_SLOW_DIVISOR Polls
 _SLOW_BLOCKS: Final[tuple[tuple[int, int], ...]] = (
@@ -120,7 +134,8 @@ _KNOWN_REGISTERS: Final[dict[int, str]] = {
     138: "T4 Exhaust (FLOAT)",
     140: "T5 (FLOAT)",
     160: "Preheater Duty % (UINT32)",
-    168: "Mode end mask (UINT32, write)",
+    168: "Unit mode flags (UINT32, read; write = Start-/End-Bitmaske)",
+    170: "Active alarm bitmask (UINT32, read)",
     196: "RH % (UINT32)",
     198: "Bypass State (UINT32)",
     324: "Fan Level (UINT32, write)",
@@ -129,9 +144,10 @@ _KNOWN_REGISTERS: Final[dict[int, str]] = {
     430: "VOC ppm (UINT32)",
     444: "Bypass Tmin (FLOAT)",
     446: "Bypass Tmax (FLOAT)",
-    472: "Current Mode (UINT32)",
-    514: "Alarm clear (UINT32, write)",
-    516: "Alarm Code (UINT32)",
+    472: "Current Mode / BL state (UINT32)",
+    476: "Required BL state (UINT32, write)",
+    514: "Alarm acknowledge (UINT32, write: Alarmcode)",
+    516: "Last active alarm code (UINT32)",
     518: "Ref RPM Extract S3 (UINT32)",
     520: "Ref RPM Supply S3 (UINT32)",
     554: "Filter Remaining (UINT32)",
@@ -264,6 +280,9 @@ class KWLFlexData:
         # Selbst gezählte Betriebsstunden pro Stufe (für geschätzte Energie).
         # dict {1..4: hours|None}; None wenn keine Analytics verfügbar.
         level_hours: dict[int, float | None] | None = None,
+        # Optional gelesene Bitmasken (Register 168 / 170); None = nicht lesbar.
+        unit_mode_mask: int | None = None,
+        alarm_mask: int | None = None,
     ) -> None:
         self._fan1_rpm        = fan1_rpm
         self._fan2_rpm        = fan2_rpm
@@ -279,6 +298,8 @@ class KWLFlexData:
         self.preheater_duty_pct  = preheater_duty_pct
         self._bypass_state_raw   = bypass_state_raw
         self.alarm_code          = alarm_code
+        self.unit_mode_mask      = unit_mode_mask
+        self.alarm_mask          = alarm_mask
 
         self._rh_percent  = rh_percent if (rh_percent is not None and rh_percent > 0) else None
         self.rh_setpoint  = rh_setpoint if (rh_setpoint is not None and rh_setpoint > 0) else None
@@ -398,12 +419,38 @@ class KWLFlexData:
         # Alarm-Codes E1/E2 sind Ventilator-Fehler — kein Zusammenhang mit Filter.
         return self.filter_residual_days > 0
 
+    def _mode_override(self) -> tuple[str | None, str] | None:
+        """Löst die Doku/App-Konflikte der BL-Zustände 7 und 12 per Bitmaske.
+
+        Doku: 7 = Nacht, 12 = Kamin. App: 7 = DiOverride, 12 = FailSafe2.
+        Ein laufender Nacht- bzw. Kaminbetrieb setzt in beiden Lesarten das
+        jeweilige Flag in Register 168. Fehlt das Flag, kann der Zustand nicht
+        Nacht/Kamin sein. Ist die Bitmaske nicht lesbar, bleibt es bei der
+        bisherigen (Doku-)Zuordnung. Rückgabe: (Slug, Text) oder None.
+        """
+        mask = self.unit_mode_mask
+        if mask is None:
+            return None
+        if self.current_mode == 7 and not mask & FLEX_UNIT_MODE_NIGHT:
+            return None, FLEX_BL_STATE_APP_TEXT[7]
+        if self.current_mode == 12 and not mask & FLEX_UNIT_MODE_FIREPLACE:
+            return None, FLEX_BL_STATE_APP_TEXT[12]
+        return None
+
     @property
     def current_mode_text(self) -> str:
         """Deutscher Klartext -- speist den Sensor `current_mode_text`.
 
         Bleibt bewusst deutsch (siehe FLEX_MODE_TEXT in const.py)."""
-        return FLEX_MODE_TEXT.get(self.current_mode, f"Modus {self.current_mode}")
+        override = self._mode_override()
+        if override is not None:
+            return override[1]
+        mode = self.current_mode
+        return (
+            FLEX_MODE_TEXT.get(mode)
+            or FLEX_BL_STATE_EXTRA_TEXT.get(mode)
+            or f"Modus {mode}"
+        )
 
     @property
     def current_mode_slug(self) -> str | None:
@@ -412,10 +459,37 @@ class KWLFlexData:
         HA verlangt Slugs als Entity-State (Uebersetzungsschluessel). None bei
         einem unbekannten Modus-Code, damit die Select-Entity 'unbekannt'
         anzeigt statt einen erfundenen Wert."""
+        override = self._mode_override()
+        if override is not None:
+            return override[0]
         return FLEX_MODE_SLUG.get(self.current_mode)
 
     @property
+    def active_alarm_codes(self) -> tuple[int, ...]:
+        """Aktuell aktive Alarme (E-Nummern) aus der Bitmaske in Register 170.
+
+        Leer, wenn keine aktiv sind ODER die Bitmaske nicht lesbar ist."""
+        mask = self.alarm_mask
+        if not mask:
+            return ()
+        return tuple(sorted(
+            code for bit, code in FLEX_ALARM_BIT_TO_CODE.items() if mask & bit
+        ))
+
+    @property
+    def has_alarm(self) -> bool:
+        """True bei gespeichertem letztem Alarm (516) ODER aktivem Alarmbit (170)."""
+        return bool(self.alarm_code) or bool(self.active_alarm_codes)
+
+    @property
     def alarm_text(self) -> str:
+        """Klartext des Alarms. Bei mehreren gleichzeitig aktiven Alarmen
+        (Bitmaske 170) werden alle genannt, sonst wie bisher der letzte (516)."""
+        codes = self.active_alarm_codes
+        if len(codes) > 1:
+            return "; ".join(FLEX_ALARM_TEXT.get(c, f"Fehler {c}") for c in codes)
+        if len(codes) == 1 and not self.alarm_code:
+            return FLEX_ALARM_TEXT.get(codes[0], f"Fehler {codes[0]}")
         return FLEX_ALARM_TEXT.get(self.alarm_code, f"Fehler {self.alarm_code}")
 
     # ── Abgeleitete Diagnose-Properties (gleiche Logik wie KWLData) ───────────
@@ -597,6 +671,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         # Poll-Divisor (Option A)
         self._poll_count: int = 0
         self._slow_cache: dict[str, Any] | None = None
+        # Optionaler Block (Register 168/170): Fehlversuche in Folge
+        self._optional_fails: int = 0
 
         # Watt-Konfiguration aus Options / Data
         self.watt_map: dict[int, float | None] = self._build_watt_map(entry)
@@ -845,6 +921,27 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 )
             raw[f"f_{offset}"] = list(result.registers)
 
+        # Optionaler Block (Modus-/Alarm-Bitmaske): Fehler sind hier KEIN Abbruch.
+        # Transportfehler (ModbusIOException) propagieren weiterhin, ein
+        # Fehlercode des Geräts (z.B. Illegal Address) deaktiviert den Block
+        # nach _OPTIONAL_FAIL_LIMIT Versuchen dauerhaft.
+        if self._optional_fails < _OPTIONAL_FAIL_LIMIT:
+            offset, count = _OPTIONAL_BLOCK
+            result = await self._client.read_holding_registers(
+                address=offset, count=count, device_id=1
+            )
+            if result.isError() or len(result.registers) != count:
+                self._optional_fails += 1
+                if self._optional_fails >= _OPTIONAL_FAIL_LIMIT:
+                    _LOGGER.warning(
+                        "Register %d-%d (Modus-/Alarm-Bitmaske) nicht lesbar – "
+                        "Auswertung deaktiviert, Betrieb ohne Bitmasken",
+                        offset, offset + count - 1,
+                    )
+            else:
+                self._optional_fails = 0
+                raw[f"o_{offset}"] = list(result.registers)
+
         # Slow-Blocks (jeder 10. Poll oder beim ersten Poll)
         if self._poll_count == 0 or self._slow_cache is None:
             slow: dict[str, list[int]] = {}
@@ -940,6 +1037,11 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         # Alarm-Code (Fast-Block 516)
         alarm = int(u32(raw.get("f_516", [0, 0]))) & 0xFF
 
+        # Optionaler Block 168: Modus-Bitmaske (168/169) + Alarm-Bitmaske (170/171)
+        o168 = raw.get("o_168")
+        unit_mode_mask = int(u32(o168[0:2])) if o168 else None
+        alarm_mask = int(u32(o168[2:4])) if o168 else None
+
         # CO2 (Fast-Block 574)
         co2_raw = int(u32(raw.get("f_574", [0, 0])))
 
@@ -973,6 +1075,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
             preheater_duty_pct=preheater_duty,
             bypass_state_raw=bypass_raw,
             alarm_code=alarm,
+            unit_mode_mask=unit_mode_mask,
+            alarm_mask=alarm_mask,
             rh_percent=rh_raw if rh_raw > 0 else None,
             rh_setpoint=rh_setpoint_raw if (rh_setpoint_raw and rh_setpoint_raw > 0) else None,
             voc_ppm=voc_raw if voc_raw > 0 else None,
@@ -1086,6 +1190,11 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
 
         Beendet ggf. den aktuellen Sondermodus (Urlaub, Sommer, Nacht, Kamin)
         bevor der neue Modus aktiviert wird.
+
+        Sommer schreibt zusätzlich -- wie die Hersteller-App -- prmRequiredBLState
+        (Register 476, siehe _write_required_bl_state). Diese Zusatzschreibzugriffe
+        sind nicht fatal: lehnt ein Gerät sie ab, bleibt es beim reinen
+        Bitmasken-Verhalten der Vorversionen.
         """
         write_mask = FLEX_MODE_TO_WRITE.get(mode_name)
         if write_mask is None:
@@ -1100,7 +1209,14 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 if end_mask is not None:
                     await self._write_uint32(168, end_mask)  # offset 168 = 40169
                     await asyncio.sleep(0.1)
+                if current_slug == "summer" and mode_name != "summer":
+                    # App: 476 ← 6 (Zustand verlassen), 1,5 s warten, 476 ← 0
+                    await self._write_required_bl_state(FLEX_BL_SUMMER)
+                    await asyncio.sleep(1.5)
+                    await self._write_required_bl_state(0)
             await self._write_uint32(168, write_mask)
+            if mode_name == "summer":
+                await self._write_required_bl_state(FLEX_BL_SUMMER)
 
         await self.async_request_refresh()  # Option C: sofortige Bestätigung
 
@@ -1111,9 +1227,15 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         await self.async_request_refresh()
 
     async def async_clear_alarm(self) -> None:
-        """Löscht den aktiven Alarm (schreibt 0 auf Register 40515)."""
+        """Quittiert den Alarm (prmSetAlarmNum, Register 40515).
+
+        Die Hersteller-App schreibt dort den Code des zuletzt aktiven Alarms
+        (prmLastActiveAlarm, Register 40517). Vorversionen schrieben 0. Ist kein
+        Alarmcode bekannt, wird weiterhin 0 geschrieben.
+        """
+        code = self.data.alarm_code if self.data is not None else 0
         async with self._lock:
-            await self._write_uint32(514, 0)  # offset 514 = 40515
+            await self._write_uint32(514, code)  # offset 514 = 40515
         await self.async_request_refresh()
 
     async def async_set_filter_total(self, days: int) -> None:
@@ -1151,6 +1273,20 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         )
         if result.isError():
             raise ModbusIOException(f"Write-Fehler: offset={offset}, value={value}")
+
+    async def _write_required_bl_state(self, state: int) -> None:
+        """Schreibt prmRequiredBLState (Register 40477), nicht fatal.
+
+        Nur für die von der App belegte Sommer-Sequenz. Ein vom Gerät
+        abgelehnter Schreibzugriff wird geloggt, bricht den Moduswechsel aber
+        nicht ab (die Modus-Bitmaske in Register 168 ist bereits geschrieben).
+        """
+        try:
+            await self._write_uint32(476, state)  # offset 476 = 40477
+        except ModbusIOException as err:
+            _LOGGER.warning(
+                "prmRequiredBLState (476) ← %d abgelehnt: %s", state, err
+            )
 
     async def _async_sync_time(self, _now: Any = None) -> None:
         """Synchronisiert die Geräteuhrzeit (Unix-Timestamp → Register 40111)."""

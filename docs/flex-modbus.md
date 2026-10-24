@@ -131,8 +131,9 @@ Torsten600 meldet: FC16 mit Block ab Offset 324 nötig (FC06 funktioniert nicht)
 
 | Register | Offset | Name | Typ | R/W | Integration | Verwendung |
 |---|---|---|---|---|---|---|
-| 40169 | 168 | `prmRamIdxUnitMode` | UINT32 | W | ✅ | Modus setzen (Bitmaske, siehe Tabelle unten) |
+| 40169 | 168 | `prmRamIdxUnitMode` | UINT32 | R/W | ✅ | Schreiben: Modus setzen (Start-/End-Bitmaske, siehe unten). Lesen: aktivierte Modus-Flags (laut Hersteller-App, siehe Abschnitt „Erkenntnisse aus der Hersteller-App“) |
 | 40473 | 472 | `prmCurrentBLState` | UINT32 | R | ✅ | Aktueller Modus (Integer, siehe Tabelle unten) |
+| 40477 | 476 | `prmRequiredBLState` | UINT32 | W | ✅ (nur Sommer) | Gewünschter BL-Zustand; die App schreibt es beim Sommer-Wechsel |
 
 **Modus-Codes für 40473 (Read):**
 
@@ -143,8 +144,10 @@ Torsten600 meldet: FC16 mit Block ab Offset 324 nötig (FC06 funktioniert nicht)
 | 3 | Wochenprogramm |
 | 5 | Urlaub (Away) |
 | 6 | Sommer |
-| 7 | Nacht |
-| 12 | Kaminbetrieb (Fireplace) |
+| 7 | Nacht (Doku) — App: DiOverride, siehe unten |
+| 9 | Kaminbetrieb (laut App) |
+| 12 | Kaminbetrieb (Doku) — App: FailSafe2, siehe unten |
+| 16 | Nacht (laut App) |
 
 **Modus-Bitmasken für 40169 (Write):**
 
@@ -222,8 +225,9 @@ Torsten600 meldet: FC16 mit Block ab Offset 324 nötig (FC06 funktioniert nicht)
 
 | Register | Offset | Name | Typ | R/W | Integration | Verwendung |
 |---|---|---|---|---|---|---|
-| 40515 | 514 | `prmSetAlarmNum` | UINT32 | W | ✅ | 0 schreiben = aktiven Alarm löschen |
-| 40517 | 516 | `prmLastActiveAlarm` | UINT32 | R | ✅ | Aktiver Alarm-Code (0 = kein Alarm) |
+| 40515 | 514 | `prmSetAlarmNum` | UINT32 | W | ✅ | Alarm quittieren: Code aus 40517 schreiben (App-Verhalten; Doku: 0) |
+| 40171 | 170 | `prmRamIdxAlarm1` | UINT32 | R | ✅ | Bitmaske aktiver Alarme (laut App, siehe unten) |
+| 40517 | 516 | `prmLastActiveAlarm` | UINT32 | R | ✅ | Letzter aktiver Alarm-Code (0 = kein Alarm) |
 
 **Alarm-Code-Tabelle (40517):**
 
@@ -326,3 +330,77 @@ Filter-Reset, Alarm-Clear und Filter-Intervall verwendet. Implementiert in
 **Validierungsstatus:** Implementiert nach dokumentiertem Register-Verhalten,
 noch nicht an echter flex-Hardware bestätigt. Feedback von Testern willkommen.
 | 3 | A/B-Schalterstellung auf Torsten600s Gerät (Register 40085/40087) | ⏳ Torsten600 |
+
+---
+
+## Erkenntnisse aus der Hersteller-App (Cockpit 1.0.23)
+
+Quelle: Analyse der Android-App „profi-air Cockpit“ (Parametertabelle mit
+433 Einträgen, Steuerlogik). Alle bisher genutzten Offsets, Wortreihenfolge,
+FC16 und Modus-Bitmasken stimmen mit der App überein. **Nicht an Hardware
+bestätigt** sind die folgenden Punkte; die Integration verhält sich so, dass
+sie in beiden Fällen sinnvoll bleibt.
+
+### Modus-Bitmaske (Register 168, lesbar)
+
+Die App liest 168 als Flags (`UnitModes`): 0x01 Installer, 0x02 Auto, 0x04
+Manual, 0x08 Week, 0x10 Away, 0x20 Night, 0x40 Fireplace, 0x80 BypassManual,
+0x100 Hac1Standby, 0x200 Hac1FireThermostat, 0x400 DefrostOff, 0x800
+DisplaySummer, 0x8000 OffMode. Night/Away/Fireplace sind „aktiviert“-Flags, die
+die App mit Auto/Manual kombiniert; „Nacht läuft gerade“ steht in 472.
+
+### BL-Zustände (Register 472): Doku und App weichen ab
+
+| Wert | Doku Rev 3.b | App (`BoardBusinessLogicStates`) |
+|---|---|---|
+| 0 | – | Standby |
+| 4 | – | Servoflow |
+| 7 | Nacht | DiOverride |
+| 8 | – | BmsOverride |
+| 9 | – | Fireplace |
+| 10 | – | Installer |
+| 11 | – | FailSafe1 |
+| 12 | Kamin | FailSafe2 |
+| 13–15 | – | FailOff, DefrostOff, Defrost |
+| 16 | – | Night |
+
+Für die App-Zählung spricht, dass `prmEnabledStates` (Offset 478) in den
+App-Demodaten `0x8001FFFF` ist (17 gesetzte Bits = 17 Zustände) und die App
+beim Verlassen von Fireplace `476 ← 9` schreibt.
+
+**Umsetzung:** Die Integration kennt beide Zählungen (7/16 → Nacht, 9/12 →
+Kamin). Ist Register 168 lesbar, gilt: 7 ist nur „Nacht“, wenn das Night-Flag
+gesetzt ist, 12 nur „Kamin“, wenn das Fireplace-Flag gesetzt ist; sonst zeigt
+der Sensor „Digitaleingang-Übersteuerung“ bzw. „Störungsbetrieb 2“. Ohne lesbare
+Bitmaske bleibt die bisherige Doku-Zuordnung.
+
+### Alarme
+
+Die App wertet **Register 170** als Bitmaske aktiver Alarme aus (mehrere
+gleichzeitig möglich): 0x0020 E1, 0x0040 E2, 0x8000 E3, 0x0001 E4, 0x0002 E5,
+0x0004 E6, 0x0008 E7, 0x1000 E8, 0x0010 E9, 0x0200 E10, 0x0100 E11, 0x0080 E12,
+0x4000 E14, 0x0400 E15 (E13 hat kein Bit). Register 516 enthält den zuletzt
+aktiven Code und dient der **Quittierung**: Die App schreibt diesen Code nach
+Register 514. Die Integration tut das jetzt ebenfalls (Fallback 0).
+
+### Sommer
+
+Die App schreibt beim Einschalten `168 ← 0x0800` **und** `476 ← 6`. Beim
+Ausschalten: `168 ← 0x8800`, `476 ← 6`, 1,5 s warten, `476 ← 0`. Die Integration
+folgt dieser Sequenz; ein vom Gerät abgelehnter Schreibzugriff auf 476 wird nur
+geloggt.
+
+### Polling
+
+Register 168–171 werden jeden Poll in einem Block gelesen. Antwortet das Gerät
+mit einem Fehler, wird der Block nach drei Versuchen dauerhaft ausgelassen und
+die Integration arbeitet wie zuvor.
+
+### Offen / auf Hardware zu prüfen
+
+- Welche BL-Zählung (7/12 vs. 16/9) gilt auf realen Geräten? Dump von 168, 472,
+  474, 476 je Modus (Manuell, Bedarf, Woche, Urlaub, Nacht, Kamin, Sommer).
+- Wirkt die Quittierung mit Code (`514 ← Code`) besser als `514 ← 0`?
+- Alarm-Bitmaske: Dump von 170 und 516 bei einem aktiven Alarm.
+- Stufe 4: Die App-Demodaten zeigen 130 % (Register 494–502, Byte 0); die
+  Integration rechnet weiter mit 1,00, bis das an Hardware bestätigt ist.

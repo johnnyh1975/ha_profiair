@@ -66,6 +66,8 @@ async def async_get_config_entry_diagnostics(
             "current_mode_text":  data.current_mode_text   if data else None,
             "alarm_code":         data.alarm_code          if data else None,
             "alarm_text":         data.alarm_text          if data else None,
+            "unit_mode_mask":     getattr(data, "unit_mode_mask", None) if data else None,
+            "alarm_mask":         getattr(data, "alarm_mask", None)     if data else None,
             "temp_abluft":        data.temp_abluft         if data else None,
             "temp_zuluft":        data.temp_zuluft         if data else None,
             "temp_aussenluft":    data.temp_aussenluft     if data else None,

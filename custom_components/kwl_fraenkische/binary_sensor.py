@@ -152,7 +152,7 @@ BINARY_SENSORS: tuple[KWLBinarySensorDescription, ...] = (
         name="Alarm aktiv",
         device_class=BinarySensorDeviceClass.PROBLEM,
         icon="mdi:alert-circle",
-        value_fn=lambda d: bool(d.alarm_code),
+        value_fn=lambda d: d.has_alarm,
         supported_protocols=frozenset({PROTOCOL_MODBUS}),
     ),
     KWLBinarySensorDescription(

@@ -5,6 +5,35 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [Unreleased]
+
+### flex/flat: Abgleich mit der Hersteller-App (Cockpit 1.0.23)
+
+Alle bisherigen Offsets und Encodings stimmen mit der App überein. Die Punkte
+unten sind noch **nicht an Hardware bestätigt**; die Änderungen sind so gebaut,
+dass das bisherige Verhalten erhalten bleibt, wenn ein Gerät sie nicht stützt.
+
+- **Betriebsmodus:** Die App kennt für „Nacht“ den BL-Zustand 16 und für „Kamin“
+  den Zustand 9 (Doku: 7 und 12). Beide Zählungen werden erkannt. Ist Register
+  168 lesbar, löst dessen Flag-Maske den Konflikt auf (7 nur mit Night-Flag, 12
+  nur mit Fireplace-Flag). Weitere App-Zustände (Standby, Servoflow, Abtauen,
+  Störungsbetrieb …) erscheinen als Klartext statt „Modus N“.
+- **Alarme:** Aktive Alarme werden zusätzlich aus der Bitmaske in Register 170
+  gelesen. „Alarm aktiv“ berücksichtigt sie, der Alarm-Text nennt bei mehreren
+  gleichzeitigen Alarmen alle.
+- **Alarm quittieren** schreibt wie die App den letzten Alarmcode nach Register
+  514 (bisher 0; 0 bleibt Fallback ohne bekannten Code).
+- **Sommer** schreibt wie die App zusätzlich Register 476 (ein: `476 ← 6`; aus:
+  `476 ← 6`, 1,5 s, `476 ← 0`). Ein abgelehnter Schreibzugriff ist nicht fatal.
+- Register 168–171 werden in einem fehlertoleranten Block gelesen; nach drei
+  Fehlern wird er ausgelassen. Diagnose-Download enthält `unit_mode_mask` und
+  `alarm_mask`.
+- 35 neue Tests (`tests/test_phase14_app_findings.py`).
+
+Details und offene Hardware-Fragen: `docs/flex-modbus.md`, Abschnitt
+„Erkenntnisse aus der Hersteller-App“.
+
+
 ## [2.1.1] – 2026-09
 
 ### Bugfix: Geräteuhr der flex/flat-Geräte ging falsch (Issue #19)
