@@ -20,10 +20,14 @@ from .const import (
     CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
     DEFAULT_MODEL, DEFAULT_MODBUS_PORT, DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
     DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL,
-    MODEL_DISPLAY, MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
-    PROTOCOL_HTTP, PROTOCOL_MODBUS,
+    LITE_DEFAULT_SCAN_INTERVAL, LITE_MIN_SCAN_INTERVAL,
+    MODEL_DISPLAY, MODEL_DISPLAY_LITE, MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
+    MODEL_PROFI_AIR_LITE,
+    PROTOCOL_HTTP, PROTOCOL_MODBUS, PROTOCOL_REST,
     UNIT_TYPE_TO_MODEL, WATT_DEFAULTS, WATT_MAX,
 )
+
+from .lite_client import KWLLiteClient, KWLLiteData, LiteError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,8 +56,12 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
       1. IP → HTTP-Probe → installer_menu (Zugangsdaten eingeben / überspringen)
       2. auth (optional) → watt → Entry erstellen
 
+    lite-Pfad (REST/JSON, experimentell):
+      1. IP → HTTP-Probe schlägt fehl → REST-Probe (GET /api/v/1/status) → confirm_lite
+      2. Bestätigung → Entry erstellen
+
     Flex-Pfad (Modbus TCP):
-      1. IP → HTTP-Probe schlägt fehl → Modbus-Probe → confirm_flex
+      1. IP → HTTP-Probe und REST-Probe schlagen fehl → Modbus-Probe → confirm_flex
       2. Bestätigung → Entry erstellen (Watt-Werte in Options konfigurieren)
     """
 
@@ -69,6 +77,8 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         self._detected_model: str = DEFAULT_MODEL
         self._firmware_version: str = ""
         self._switch_position: str = "?"
+        # lite-Pfad
+        self._lite: KWLLiteData | None = None
 
     async def async_step_user(self, user_input: dict[str, str] | None = None) -> ConfigFlowResult:
         """Schritt 1: IP-Adresse → Protokoll-Erkennung."""
@@ -84,6 +94,16 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
                 self._mac = result["mac"]
                 self._protocol = PROTOCOL_HTTP
                 return await self.async_step_installer_menu()
+
+            # ── REST-Probe (140/200 lite) ─────────────────────────────────────
+            # Vor Modbus: schlägt auf flex/flat sofort fehl (kein Webserver auf
+            # Port 80, dieselbe Situation wie bei der touch-Probe oben).
+            lite_result = await _probe_lite(host)
+            if lite_result is not None:
+                self._host = host
+                self._lite = lite_result
+                self._protocol = PROTOCOL_REST
+                return await self.async_step_confirm_lite()
 
             # ── Modbus-Probe (flex / flat) ────────────────────────────────────
             flex_result = await _probe_modbus(host)
@@ -145,6 +165,34 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         self._username = ""
         self._password = ""
         return await self.async_step_watt()
+
+    async def async_step_confirm_lite(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """lite-Gerät (REST) bestätigen und Entry erstellen."""
+        lite = self._lite
+        assert lite is not None
+
+        if user_input is not None:
+            unique = _lite_unique_id(self._host, lite)
+            await self.async_set_unique_id(unique)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: self._host})
+            return self.async_create_entry(
+                title=f"{MODEL_DISPLAY_LITE} ({self._host})",
+                data=_lite_entry_data(self._host, lite, unique),
+            )
+
+        return self.async_show_form(
+            step_id="confirm_lite",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "model": MODEL_DISPLAY_LITE,
+                "name": lite.name or "–",
+                "serial": lite.serial or "–",
+                "firmware": lite.firmware or "–",
+                "host": self._host,
+            },
+        )
 
     async def async_step_confirm_flex(
         self, user_input: dict | None = None
@@ -378,6 +426,11 @@ class KWLOptionsFlow(OptionsFlow):
         current = self._entry.options
         data = self._entry.data
 
+        if protocol == PROTOCOL_REST:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_lite_options_schema(current),
+            )
         if protocol == PROTOCOL_MODBUS:
             return self.async_show_form(
                 step_id="init",
@@ -475,6 +528,51 @@ class KWLOptionsFlow(OptionsFlow):
             _opt_watt(3): watt_validator,
             _opt_watt(4): watt_validator,
         })
+
+
+def _lite_unique_id(host: str, lite: KWLLiteData) -> str:
+    """Eindeutige Kennung: UID, sonst Seriennummer, sonst Host (letzter Notnagel)."""
+    return lite.uid or lite.serial or host
+
+
+def _lite_entry_data(host: str, lite: KWLLiteData, unique: str) -> dict[str, str]:
+    """Inhalt des Config Entry für ein lite-Gerät."""
+    return {
+        CONF_HOST: host,
+        CONF_PROTOCOL: PROTOCOL_REST,
+        "mac": unique,   # Schlüsselname wie bei den anderen Protokollen (unique_id-Präfix)
+        "model": MODEL_PROFI_AIR_LITE,
+        "firmware": lite.firmware or "",
+        "serial": lite.serial or "",
+        "name": lite.name or "",
+    }
+
+
+def _lite_options_schema(current: dict) -> vol.Schema:
+    """Options-Schema für lite-Einträge: nur das Poll-Intervall (keine Watt-Werte,
+    das Gerät kennt keine Lüfterstufen)."""
+    return vol.Schema({
+        vol.Required(
+            CONF_SCAN_INTERVAL,
+            default=current.get(CONF_SCAN_INTERVAL, LITE_DEFAULT_SCAN_INTERVAL),
+        ): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=LITE_MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+        ),
+    })
+
+
+async def _probe_lite(host: str) -> KWLLiteData | None:
+    """Prüft, ob unter ``host`` ein lite-WLAN-Modul (REST/JSON) antwortet.
+
+    Gibt den dekodierten Status zurück oder None, wenn dort etwas anderes (oder
+    nichts) antwortet. Wirft nie -- jede Abweichung heißt "kein lite-Gerät".
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            return await KWLLiteClient(session, host, timeout=5).get_status()
+    except LiteError:
+        return None
 
 
 async def _probe_modbus(

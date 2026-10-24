@@ -14,6 +14,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import KWLCoordinator
 from .flex_coordinator import KWLFlexCoordinator
+from .lite_coordinator import KWLLiteCoordinator
+from .lite_entities import async_setup_lite_fan
 
 AnyKWLCoordinator = KWLCoordinator | KWLFlexCoordinator
 
@@ -54,9 +56,13 @@ async def async_setup_entry(
     # KWLFan funktioniert für beide Coordinator-Typen identisch -- sie nutzt nur
     # coordinator.data.current_level, .watt_map, .model_slug, .device_info und
     # .async_set_level(), die auf KWLCoordinator und KWLFlexCoordinator gleich
-    # heißen. Keine separate Flex-Variante nötig.
+    # heißen. Keine separate Flex-Variante nötig. Das lite-Gerät (REST) hat
+    # keine Stufen und bekommt eine eigene Fan-Entity (lite_entities.py).
     coordinator = entry.runtime_data
-    async_add_entities([KWLFan(coordinator, entry)])
+    if isinstance(coordinator, KWLLiteCoordinator):
+        await async_setup_lite_fan(coordinator, async_add_entities)
+    else:
+        async_add_entities([KWLFan(coordinator, entry)])
 
 
 class KWLFan(CoordinatorEntity[AnyKWLCoordinator], FanEntity):

@@ -239,8 +239,14 @@ _er.async_entries_for_config_entry = MagicMock(return_value=[])
 import homeassistant.helpers.storage as _storage
 _storage.Store = MagicMock
 
+class _HomeAssistantError(Exception):
+    pass
+
 import homeassistant.exceptions as _exc
 _exc.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
+# Echte Exception-Klasse: ohne sie loest `raise HomeAssistantError(...)` im
+# getesteten Code ein TypeError aus (der Stub liefert sonst ein MagicMock).
+_exc.HomeAssistantError = _HomeAssistantError
 
 import homeassistant.config_entries as _ce
 _ce.ConfigEntry = MagicMock

@@ -14,10 +14,11 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_PROTOCOL,
     CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
-    DEFAULT_WATT, DOMAIN, PROTOCOL_HTTP, PROTOCOL_MODBUS,
+    DEFAULT_WATT, DOMAIN, PROTOCOL_HTTP, PROTOCOL_MODBUS, PROTOCOL_REST,
 )
 from .coordinator import KWLCoordinator
 from .flex_coordinator import KWLFlexCoordinator
+from .lite_coordinator import KWLLiteCoordinator
 
 PLATFORMS = [
     Platform.FAN,
@@ -28,8 +29,16 @@ PLATFORMS = [
     Platform.BUTTON,
 ]
 
-# Union-Typ für beide Coordinator-Familien
-AnyKWLCoordinator = KWLCoordinator | KWLFlexCoordinator
+# Das lite-Gerät (REST) bietet nur Lüftung, Sensoren und Alarme -- keine
+# Zahlen-, Auswahl- oder Button-Entitäten.
+PLATFORMS_LITE = [
+    Platform.FAN,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+]
+
+# Union-Typ für alle Coordinator-Familien
+AnyKWLCoordinator = KWLCoordinator | KWLFlexCoordinator | KWLLiteCoordinator
 
 # Typed ConfigEntry (HA 2024.4+)
 type KWLConfigEntry = ConfigEntry[AnyKWLCoordinator]
@@ -191,12 +200,26 @@ def _async_create_slug_migration_issue(hass: HomeAssistant) -> None:
     )
 
 
+def _platforms_for(entry: KWLConfigEntry) -> list[Platform]:
+    """Plattformen je Protokoll (Setup und Unload müssen dieselbe Liste nutzen)."""
+    if entry.data.get(CONF_PROTOCOL) == PROTOCOL_REST:
+        return PLATFORMS_LITE
+    return PLATFORMS
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: KWLConfigEntry) -> bool:
     _async_create_slug_migration_issue(hass)
 
     protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
 
-    if protocol == PROTOCOL_MODBUS:
+    if protocol == PROTOCOL_REST:
+        # ── lite Pfad (REST/JSON, experimentell) ─────────────────────────────
+        coordinator = KWLLiteCoordinator(hass, entry=entry)
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = coordinator
+        await coordinator.async_setup()
+
+    elif protocol == PROTOCOL_MODBUS:
         # ── Flex / Flat Pfad (Modbus TCP) ────────────────────────────────────
         coordinator = KWLFlexCoordinator(hass, entry=entry)
         await coordinator.async_config_entry_first_refresh()
@@ -228,12 +251,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: KWLConfigEntry) -> bool:
         await coordinator.async_setup()
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, _platforms_for(entry))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: KWLConfigEntry) -> bool:
-    unload_ok: bool = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok: bool = await hass.config_entries.async_unload_platforms(
+        entry, _platforms_for(entry)
+    )
     if unload_ok:
         coordinator: AnyKWLCoordinator = entry.runtime_data
         coordinator.async_teardown()

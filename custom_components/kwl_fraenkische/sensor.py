@@ -28,7 +28,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_PROTOCOL, LEVEL_TO_WATT, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .const import CONF_PROTOCOL, LEVEL_TO_WATT, PROTOCOL_HTTP, PROTOCOL_MODBUS, PROTOCOL_REST
+from .lite_entities import async_setup_lite_sensors
 from .coordinator import KWLCoordinator, KWLData, _is_supported
 
 PARALLEL_UPDATES = 0
@@ -936,6 +937,10 @@ async def async_setup_entry(
     protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
     entities: list = []
+
+    if protocol == PROTOCOL_REST:
+        await async_setup_lite_sensors(coordinator, async_add_entities)
+        return
 
     if protocol == PROTOCOL_MODBUS:
         # Flex-Pfad: required_tag NICHT ausschließen — Tags sind XML-spezifisch (touch-Capability-Gate),

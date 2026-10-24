@@ -54,6 +54,10 @@
       "confirm_flex": {
         "title": "Device Detected",
         "description": "A profi-air flex/flat device was found:\n\n**Model:** {model}\n**Firmware:** {firmware}\n**Fan switch:** Position {switch}\n**Host:** {host}\n\nConfirm to set up."
+      },
+      "confirm_lite": {
+        "title": "Device Detected (experimental)",
+        "description": "A profi-air 140/200 lite was found:\n\n**Model:** {model}\n**Name:** {name}\n**Serial number:** {serial}\n**Firmware:** {firmware}\n**Host:** {host}\n\nSupport is **experimental** and not yet confirmed on real hardware. Available: on/off, ventilation function (Auto, Night, Min, Max), room temperature, humidity, air quality and alarms. Confirm to set up."
       }
     },
     "error": {
@@ -80,6 +84,19 @@
               "level_2": "Level 2 – Reduced",
               "level_3": "Level 3 – Nominal",
               "level_4": "Level 4 – Intensive"
+            }
+          }
+        }
+      },
+      "lite_fan": {
+        "name": "Ventilation",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "Auto",
+              "night": "Night",
+              "min": "Minimum",
+              "max": "Maximum"
             }
           }
         }
@@ -256,6 +273,21 @@
       },
       "energy_total_flex": {
         "name": "Total energy (estimated)"
+      },
+      "lite_room_temperature": {
+        "name": "Room temperature"
+      },
+      "lite_humidity": {
+        "name": "Room humidity"
+      },
+      "lite_air_quality": {
+        "name": "Air quality (level 1–5)"
+      },
+      "lite_water_temperature": {
+        "name": "Coil temperature"
+      },
+      "lite_alarms": {
+        "name": "Alarms"
       }
     },
     "binary_sensor": {
@@ -315,6 +347,15 @@
       },
       "filter_clogging_suspected": {
         "name": "Filter clogging suspected"
+      },
+      "lite_alarm_active": {
+        "name": "Alarm active"
+      },
+      "lite_contact_presence": {
+        "name": "Contact (window) active"
+      },
+      "lite_key_lock": {
+        "name": "Key lock"
       }
     },
     "number": {

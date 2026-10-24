@@ -21,7 +21,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import KWLCoordinator, KWLData, _is_supported
-from .const import CONF_PROTOCOL, PROTOCOL_HTTP, PROTOCOL_MODBUS
+from .const import CONF_PROTOCOL, PROTOCOL_HTTP, PROTOCOL_MODBUS, PROTOCOL_REST
+from .lite_entities import async_setup_lite_binary_sensors
 
 PARALLEL_UPDATES = 0
 
@@ -247,6 +248,10 @@ async def async_setup_entry(
     protocol = entry.data.get(CONF_PROTOCOL, PROTOCOL_HTTP)
     mac = entry.data.get("mac", entry.entry_id)
     entities: list = []
+
+    if protocol == PROTOCOL_REST:
+        await async_setup_lite_binary_sensors(coordinator, async_add_entities)
+        return
 
     if protocol == PROTOCOL_MODBUS:
         supported = [

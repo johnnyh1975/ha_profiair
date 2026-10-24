@@ -34,6 +34,26 @@ Details und offene Hardware-Fragen: `docs/flex-modbus.md`, Abschnitt
 „Erkenntnisse aus der Hersteller-App“.
 
 
+### Neu (experimentell): profi-air 140 / 200 lite
+
+Dritte Protokollfamilie neben touch (HTTP/XML) und flex/flat (Modbus): das
+WLAN-Modul der lite-Geräte spricht REST/JSON. **Aus der Hersteller-App
+abgeleitet, noch nicht an echter Hardware bestätigt** — siehe
+[docs/lite-rest.md](docs/lite-rest.md).
+
+- Automatische Erkennung im Config Flow (nach touch, vor Modbus), rein lokal,
+  ohne Cloud und ohne Zugangsdaten.
+- Entitäten: Lüftung (Ein/Aus + Preset Auto/Nacht/Minimal/Maximal),
+  Raumtemperatur, Raumfeuchte, Luftqualität (Stufe 1–5), Alarme, Fenster-
+  kontakt, Tastensperre, optional Registertemperatur.
+- Nicht verfügbar über diese Schnittstelle: Volumenstrom, Drehzahl, Filter,
+  Bypass, Energie. Bewusst nicht umgesetzt: alle Befehle, die Geräteregister
+  oder Netzwerkeinstellungen schreiben.
+- Diagnose-Download enthält das rohe Status-`RESULT` zur Validierung.
+- Bestehende touch- und flex/flat-Einträge bleiben unberührt.
+- 79 neue Tests (`tests/test_phase15_lite_rest.py`), darunter der Client gegen
+  einen lokalen Mock-Server.
+
 ## [2.1.1] – 2026-09
 
 ### Bugfix: Geräteuhr der flex/flat-Geräte ging falsch (Issue #19)

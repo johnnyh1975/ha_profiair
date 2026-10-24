@@ -6,6 +6,7 @@ DOMAIN = "kwl_fraenkische"
 CONF_PROTOCOL = "protocol"
 PROTOCOL_HTTP    = "http"    # profi-air 250/400 touch (HTTP XML)
 PROTOCOL_MODBUS  = "modbus"  # profi-air 250/360 flex, 180 flat (Modbus TCP)
+PROTOCOL_REST    = "rest"    # profi-air 140/200 lite (REST/JSON, Innova-WLAN-Modul)
 
 # ── Gerätemodelle ─────────────────────────────────────────────────────────────
 
@@ -332,3 +333,16 @@ FLEX_LEVEL_RATIO: dict[int, float] = {
 # Bei Stufe 3 gemessene RPM-Abweichung von der Inbetriebnahme-Referenz, ab der
 # eine Diagnose-Warnung ausgelöst wird (zunehmender Filterwiderstand).
 FILTER_RPM_DRIFT_WARN_PCT: float = 8.0
+
+# ── REST (140/200 lite) ───────────────────────────────────────────────────────
+# EXPERIMENTELL: aus der Hersteller-App abgeleitet, noch nicht an Hardware
+# bestätigt -- siehe docs/lite-rest.md. Bewusst NICHT in MODEL_PROTOCOLS /
+# WATT_DEFAULTS: das Gerät liefert keine Lüfterdaten, es gibt keine Stufen und
+# keine Leistungsberechnung.
+MODEL_PROFI_AIR_LITE = "profi_air_lite"
+MODEL_DISPLAY_LITE = "profi-air 140/200 lite (experimentell)"
+
+# Die Cloud-API des Herstellers drosselt nicht, aber das ESP8266-Modul ist
+# schwach: nicht häufiger als alle 15 s abfragen.
+LITE_MIN_SCAN_INTERVAL = 15
+LITE_DEFAULT_SCAN_INTERVAL = 30
