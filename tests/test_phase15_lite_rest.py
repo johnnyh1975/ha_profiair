@@ -771,3 +771,35 @@ class TestWiring:
         # Identifizierende Felder dürfen nicht in den Diagnosedaten stehen:
         text = json.dumps(out)
         assert "IN1234567" not in text and "AABBCCDDEEFF" not in text
+
+
+class TestLocalOnly:
+    """Grundsatz: lite spricht nur lokal, nie über die Hersteller-Cloud."""
+
+    _FORBIDDEN = ("innovaenergie", "fancoil.", "x-uid", "x-serial", "firebase")
+
+    @pytest.mark.parametrize(
+        "module", ["lite_client.py", "lite_coordinator.py", "lite_entities.py"]
+    )
+    def test_no_cloud_reference_in_code(self, module):
+        # Nur Code prüfen, Kommentare/Docstrings dürfen die Cloud erwähnen.
+        tree = ast.parse((_CC / module).read_text(encoding="utf-8"))
+        doc_nodes = {
+            id(n.body[0].value)
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.body
+            and isinstance(n.body[0], ast.Expr)
+            and isinstance(getattr(n.body[0], "value", None), ast.Constant)
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if id(node) in doc_nodes:
+                    continue
+                low = node.value.lower()
+                for bad in self._FORBIDDEN:
+                    assert bad not in low, f"{module}: {bad!r} in {node.value!r}"
+
+    def test_client_only_builds_plain_http_urls_to_host(self):
+        src = (_CC / "lite_client.py").read_text(encoding="utf-8")
+        assert "https://" not in src

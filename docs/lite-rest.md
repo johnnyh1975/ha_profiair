@@ -18,6 +18,12 @@ Die Hersteller-App bedient das Gerät im Heimnetz über die Innova-Cloud; Status
 Einrichtung und Registerzugriff gehen direkt an die IP. Diese Integration
 verwendet **ausschließlich die lokale API** und benötigt keine Cloud.
 
+**Grundsatz: lokal hat Priorität.** Es gibt keinen Cloud-Code, keine
+Cloud-Zugangsdaten und keinen stillen Fallback. Lehnt das Gerät einen
+`set/*`-Befehl lokal ab, wird das als Fehler gemeldet (HA-Fehlermeldung,
+Diagnosedaten) und nicht über die Cloud umgangen. Eine Cloud-Option käme nur
+als bewusst aktivierbare Ergänzung in Frage, falls Tests sie nötig machen.
+
 ## Was die Integration bietet
 
 | Entität | Quelle (`RESULT`) | Hinweis |
