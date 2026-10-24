@@ -5,7 +5,7 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
-## [Unreleased]
+## [2.2.0] – 2026-10
 
 ### flex/flat: Abgleich mit der Hersteller-App (Cockpit 1.0.23)
 
