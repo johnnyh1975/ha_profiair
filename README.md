@@ -97,7 +97,15 @@ Everything runs locally. No cloud, no subscription, no external services.
 
 The flex/flat side was implemented from the official Fränkische Modbus TCP/IP documentation. The touch side is validated against a real 400 touch; the 360 flex and 130 flat are now confirmed on real hardware, and the 250 flex and 180 flat still rely on the documentation. Feedback from owners of those two is what drives them toward full validation — reports on GitHub, even just confirming that temperatures and fan levels read correctly, are very welcome.
 
-The integration detects the protocol automatically: it tries HTTP first (touch), then falls back to Modbus (flex/flat). No manual protocol selection needed.
+### REST/JSON (profi-air 140 / 200 lite) — experimental
+
+| Model | Protocol | Status |
+|---|---|---|
+| **profi-air 140 lite / 200 lite** | REST/JSON (Innova WLAN module) | 🧪 Experimental — derived from the manufacturer app, **not yet confirmed on real hardware** |
+
+The lite units are a separate protocol family: no Modbus, no fan-level data. The integration offers on/off, the ventilation function (Auto, Night, Min, Max), room temperature, humidity, air quality and alarms. Airflow, fan speed, filter and bypass values are not available over this interface. See [docs/lite-rest.md](docs/lite-rest.md) for what is known, what is not, and how to help validate it.
+
+The integration detects the protocol automatically: it tries HTTP first (touch), then the lite REST interface, then Modbus (flex/flat). No manual protocol selection needed.
 
 For touch devices, entity capabilities are discovered from the XML response — entities your firmware does not provide are not created. For flex/flat, optional sensors (VOC, humidity, CO₂, room temperature) are enabled only when hardware is detected at first poll.
 
@@ -132,7 +140,7 @@ Copy `custom_components/kwl_fraenkische` into your `config/custom_components/` d
 Go to **Settings → Devices & Services → Add Integration**, search for **KWL Fränkische Rohrwerke**.
 
 **Step 1 — IP address**
-Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration probes automatically: HTTP first (touch), then Modbus (flex/flat).
+Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration probes automatically: HTTP first (touch), then REST (140/200 lite), then Modbus (flex/flat).
 
 ---
 
@@ -160,6 +168,10 @@ All four values are individually configurable. Stufe 4 is the primary anchor —
 Settings → Devices & Services → KWL → Configure → select your model. This activates model-appropriate defaults and enables model-specific airflow estimation.
 
 ---
+
+### lite path (profi-air 140/200 lite, experimental)
+
+The unit's WLAN module must be on your home network (not only in its own hotspot). Enter its IP address; the integration reads the name, serial number and firmware and shows a confirmation screen. No credentials and no power values are needed. Details and limits: [docs/lite-rest.md](docs/lite-rest.md).
 
 ### Flex/flat path (profi-air 250/360 flex, 180 flat)
 

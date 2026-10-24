@@ -5,6 +5,58 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [Unreleased]
+
+### flex/flat: Abgleich mit der Hersteller-App (Cockpit 1.0.23)
+
+Alle bisherigen Offsets und Encodings stimmen mit der App überein. Die Punkte
+unten sind noch **nicht an Hardware bestätigt**; die Änderungen sind so gebaut,
+dass das bisherige Verhalten erhalten bleibt, wenn ein Gerät sie nicht stützt.
+
+- **Betriebsmodus:** Die App kennt für „Nacht“ den BL-Zustand 16 und für „Kamin“
+  den Zustand 9 (Doku: 7 und 12). Beide Zählungen werden erkannt. Ist Register
+  168 lesbar, löst dessen Flag-Maske den Konflikt auf (7 nur mit Night-Flag, 12
+  nur mit Fireplace-Flag). Weitere App-Zustände (Standby, Servoflow, Abtauen,
+  Störungsbetrieb …) erscheinen als Klartext statt „Modus N“.
+- **Alarme:** Aktive Alarme werden zusätzlich aus der Bitmaske in Register 170
+  gelesen. „Alarm aktiv“ berücksichtigt sie, der Alarm-Text nennt bei mehreren
+  gleichzeitigen Alarmen alle.
+- **Alarm quittieren** schreibt wie die App den letzten Alarmcode nach Register
+  514 (bisher 0; 0 bleibt Fallback ohne bekannten Code).
+- **Sommer** schreibt wie die App zusätzlich Register 476 (ein: `476 ← 6`; aus:
+  `476 ← 6`, 1,5 s, `476 ← 0`). Ein abgelehnter Schreibzugriff ist nicht fatal.
+- Register 168–171 werden in einem fehlertoleranten Block gelesen; nach drei
+  Fehlern wird er ausgelassen. Diagnose-Download enthält `unit_mode_mask` und
+  `alarm_mask`.
+- 35 neue Tests (`tests/test_phase14_app_findings.py`).
+
+Details und offene Hardware-Fragen: `docs/flex-modbus.md`, Abschnitt
+„Erkenntnisse aus der Hersteller-App“.
+
+
+### Neu (experimentell): profi-air 140 / 200 lite
+
+Dritte Protokollfamilie neben touch (HTTP/XML) und flex/flat (Modbus): das
+WLAN-Modul der lite-Geräte spricht REST/JSON. **Aus der Hersteller-App
+abgeleitet, noch nicht an echter Hardware bestätigt** — siehe
+[docs/lite-rest.md](docs/lite-rest.md).
+
+- Automatische Erkennung im Config Flow (nach touch, vor Modbus), rein lokal,
+  ohne Cloud und ohne Zugangsdaten.
+- Entitäten: Lüftung (Ein/Aus + Preset Auto/Nacht/Minimal/Maximal),
+  Raumtemperatur, Raumfeuchte, Luftqualität (Stufe 1–5), Alarme, Fensterkontakt,
+  Tastensperre (Schalter), optional Registertemperatur. Sollwert (Zahl) und
+  Betriebsart Winter/Sommer (Auswahl) sind vorhanden, aber standardmäßig
+  deaktiviert (wirken laut App nur mit Hydronik-Batterie); der Wechsel der
+  Betriebsart schaltet das Gerät zuerst ein (Muster aus `innova-controls`).
+- Nicht verfügbar über diese Schnittstelle: Volumenstrom, Drehzahl, Filter,
+  Bypass, Energie. Bewusst nicht umgesetzt: alle Befehle, die Geräteregister
+  oder Netzwerkeinstellungen schreiben.
+- Diagnose-Download enthält das rohe Status-`RESULT` zur Validierung.
+- Bestehende touch- und flex/flat-Einträge bleiben unberührt.
+- 101 neue Tests (`tests/test_phase15_lite_rest.py`), darunter der Client gegen
+  einen lokalen Mock-Server.
+
 ## [2.1.1] – 2026-09
 
 ### Bugfix: Geräteuhr der flex/flat-Geräte ging falsch (Issue #19)

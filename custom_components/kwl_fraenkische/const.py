@@ -6,6 +6,7 @@ DOMAIN = "kwl_fraenkische"
 CONF_PROTOCOL = "protocol"
 PROTOCOL_HTTP    = "http"    # profi-air 250/400 touch (HTTP XML)
 PROTOCOL_MODBUS  = "modbus"  # profi-air 250/360 flex, 180 flat (Modbus TCP)
+PROTOCOL_REST    = "rest"    # profi-air 140/200 lite (REST/JSON, Innova-WLAN-Modul)
 
 # ── Gerätemodelle ─────────────────────────────────────────────────────────────
 
@@ -208,6 +209,13 @@ FLEX_ALARM_TEXT: dict[int, str] = {
 # bewusst deutscher Klartext: der Sensor hat keine State-Übersetzungen, hassfest
 # beanstandet ihn nicht, und ihn mit umzustellen wäre ein zusätzlicher, nicht
 # erforderlicher Bruch für Automationen, die ihn auslesen.
+#
+# 7 = Nacht und 12 = Kamin stammen aus der Fränkische-Modbus-Doku (Rev 3.b).
+# Die Hersteller-App (Cockpit 1.0.23) führt dagegen Nacht = 16 und Kamin = 9;
+# bei ihr ist 7 = DiOverride und 12 = FailSafe2. Welche Zählung auf realer
+# Hardware gilt, ist offen -- siehe docs/flex-modbus.md. Deshalb stehen hier
+# BEIDE Zählungen; Konflikte löst KWLFlexData anhand der Modus-Bitmaske
+# (Register 168) auf, soweit diese lesbar ist.
 FLEX_MODE_TEXT: dict[int, str] = {
     1:  "Manuell",
     2:  "Bedarfsgesteuert",
@@ -215,7 +223,59 @@ FLEX_MODE_TEXT: dict[int, str] = {
     5:  "Urlaub",
     6:  "Sommer",
     7:  "Nacht",
+    9:  "Kaminbetrieb",
     12: "Kaminbetrieb",
+    16: "Nacht",
+}
+
+# Zusätzliche Zustände aus dem App-Enum BoardBusinessLogicStates, die KEINEM
+# Select-Slug entsprechen. Nur für den Sensor `current_mode_text`; ohne diese
+# Einträge stünde dort "Modus N".
+FLEX_BL_STATE_EXTRA_TEXT: dict[int, str] = {
+    0:  "Standby",
+    4:  "Servoflow",
+    8:  "BMS-Übersteuerung",
+    10: "Installateur",
+    11: "Störungsbetrieb 1",
+    13: "Aus (Störung)",
+    14: "Abtauen aus",
+    15: "Abtauen",
+}
+
+# Lesart der zwischen Doku und App strittigen Zustände, wenn die Modus-Bitmaske
+# sie als "nicht Nacht" bzw. "nicht Kamin" ausweist.
+FLEX_BL_STATE_APP_TEXT: dict[int, str] = {
+    7:  "Digitaleingang-Übersteuerung",
+    12: "Störungsbetrieb 2",
+}
+
+# BL-Zustand Sommer (Register 472): in Doku und App identisch. Die App schreibt
+# beim Ein-/Ausschalten zusätzlich 476 ← 6 (prmRequiredBLState).
+FLEX_BL_SUMMER: int = 6
+
+# Bitmaske prmRamIdxUnitMode (Register 168, lesbar) -- Flags aus dem App-Enum
+# UnitModes. Night/Away/Fireplace sind "Modus aktiviert"-Flags (die App
+# kombiniert sie mit Auto/Manual), nicht "läuft gerade".
+FLEX_UNIT_MODE_NIGHT:     int = 0x0020
+FLEX_UNIT_MODE_FIREPLACE: int = 0x0040
+
+# Aktive Alarme: Bit in prmRamIdxAlarm1 (Register 170) → Alarm-Code (E-Nummer,
+# Schlüssel von FLEX_ALARM_TEXT). E13 (Kommunikation) hat kein Bit.
+FLEX_ALARM_BIT_TO_CODE: dict[int, int] = {
+    0x0020: 1,    # Abluftventilator
+    0x0040: 2,    # Zuluftventilator
+    0x8000: 3,    # Sommerbypass
+    0x0001: 4,    # T1 Außenluftfühler
+    0x0002: 5,    # T2 Zuluftfühler
+    0x0004: 6,    # T3 Abluftfühler
+    0x0008: 7,    # T4 Fortluftfühler
+    0x1000: 8,    # T5 Raumfühler
+    0x0010: 9,    # RH-Sensor
+    0x0200: 10,   # Außenluft < -13 °C
+    0x0100: 11,   # Zuluft < 5 °C
+    0x0080: 12,   # Überhitzung T1-T4
+    0x4000: 14,   # Brand/Rauch (T5)
+    0x0400: 15,   # Kondensat-Hochstand
 }
 
 # Betriebsmodi Register 40473 (lesen) → Slug.
@@ -232,7 +292,9 @@ FLEX_MODE_SLUG: dict[int, str] = {
     5:  "away",
     6:  "summer",
     7:  "night",
+    9:  "fireplace",
     12: "fireplace",
+    16: "night",
 }
 
 # Slug → Bitmask für Register 40169 (schreiben)
@@ -271,3 +333,16 @@ FLEX_LEVEL_RATIO: dict[int, float] = {
 # Bei Stufe 3 gemessene RPM-Abweichung von der Inbetriebnahme-Referenz, ab der
 # eine Diagnose-Warnung ausgelöst wird (zunehmender Filterwiderstand).
 FILTER_RPM_DRIFT_WARN_PCT: float = 8.0
+
+# ── REST (140/200 lite) ───────────────────────────────────────────────────────
+# EXPERIMENTELL: aus der Hersteller-App abgeleitet, noch nicht an Hardware
+# bestätigt -- siehe docs/lite-rest.md. Bewusst NICHT in MODEL_PROTOCOLS /
+# WATT_DEFAULTS: das Gerät liefert keine Lüfterdaten, es gibt keine Stufen und
+# keine Leistungsberechnung.
+MODEL_PROFI_AIR_LITE = "profi_air_lite"
+MODEL_DISPLAY_LITE = "profi-air 140/200 lite (experimentell)"
+
+# Die Cloud-API des Herstellers drosselt nicht, aber das ESP8266-Modul ist
+# schwach: nicht häufiger als alle 15 s abfragen.
+LITE_MIN_SCAN_INTERVAL = 15
+LITE_DEFAULT_SCAN_INTERVAL = 30

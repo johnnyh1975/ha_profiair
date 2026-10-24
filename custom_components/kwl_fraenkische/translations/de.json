@@ -54,6 +54,10 @@
       "confirm_flex": {
         "title": "Gerät erkannt",
         "description": "Ein profi-air flex/flat Gerät wurde gefunden:\n\n**Modell:** {model}\n**Firmware:** {firmware}\n**Lüfterschalter:** Position {switch}\n**Host:** {host}\n\nBestätigen zum Einrichten."
+      },
+      "confirm_lite": {
+        "title": "Gerät erkannt (experimentell)",
+        "description": "Ein profi-air 140/200 lite wurde gefunden:\n\n**Modell:** {model}\n**Name:** {name}\n**Seriennummer:** {serial}\n**Firmware:** {firmware}\n**Host:** {host}\n\nDie Unterstützung ist **experimentell** und noch nicht an echter Hardware bestätigt. Verfügbar sind Ein/Aus, Lüftungsfunktion (Auto, Nacht, Min, Max), Raumtemperatur, Feuchte, Luftqualität und Alarme. Bestätigen zum Einrichten."
       }
     },
     "error": {
@@ -80,6 +84,19 @@
               "level_2": "Stufe 2 – Reduziert",
               "level_3": "Stufe 3 – Nennlüftung",
               "level_4": "Stufe 4 – Intensivlüftung"
+            }
+          }
+        }
+      },
+      "lite_fan": {
+        "name": "Lüftung",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "Auto",
+              "night": "Nacht",
+              "min": "Minimal",
+              "max": "Maximal"
             }
           }
         }
@@ -256,6 +273,21 @@
       },
       "energy_total_flex": {
         "name": "Energie gesamt (geschätzt)"
+      },
+      "lite_room_temperature": {
+        "name": "Raumtemperatur"
+      },
+      "lite_humidity": {
+        "name": "Raumfeuchte"
+      },
+      "lite_air_quality": {
+        "name": "Luftqualität (Stufe 1–5)"
+      },
+      "lite_water_temperature": {
+        "name": "Registertemperatur"
+      },
+      "lite_alarms": {
+        "name": "Alarme"
       }
     },
     "binary_sensor": {
@@ -315,6 +347,12 @@
       },
       "filter_clogging_suspected": {
         "name": "Filterverstopfung Verdacht"
+      },
+      "lite_alarm_active": {
+        "name": "Alarm aktiv"
+      },
+      "lite_contact_presence": {
+        "name": "Kontakt (Fenster) aktiv"
       }
     },
     "number": {
@@ -341,6 +379,9 @@
       },
       "filter_total_days_flex": {
         "name": "Filterintervall"
+      },
+      "lite_setpoint": {
+        "name": "Sollwert"
       }
     },
     "select": {
@@ -396,6 +437,13 @@
           "night": "Nacht",
           "fireplace": "Kaminbetrieb"
         }
+      },
+      "lite_season": {
+        "name": "Betriebsart",
+        "state": {
+          "heating": "Winter (Heizen)",
+          "cooling": "Sommer (Kühlen)"
+        }
       }
     },
     "button": {
@@ -413,6 +461,11 @@
       },
       "alarm_clear": {
         "name": "Alarm quittieren"
+      }
+    },
+    "switch": {
+      "lite_key_lock": {
+        "name": "Tastensperre"
       }
     }
   },

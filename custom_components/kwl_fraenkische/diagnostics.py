@@ -6,7 +6,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from . import KWLConfigEntry
-from .const import CONF_PROTOCOL, PROTOCOL_MODBUS
+from .const import CONF_PROTOCOL, PROTOCOL_MODBUS, PROTOCOL_REST
 
 REDACTED = "**REDACTED**"
 
@@ -26,9 +26,12 @@ async def async_get_config_entry_diagnostics(
     config_data = dict(entry.data)
     # Nur vorhandene Secrets schwärzen -- ein read-only Touch-Setup hat z.B.
     # gar kein Passwort, dann darf auch kein REDACTED-Key erscheinen.
-    for secret_key in ("password", "username", "mac"):
+    for secret_key in ("password", "username", "mac", "serial", "name"):
         if secret_key in config_data:
             config_data[secret_key] = REDACTED
+
+    if protocol == PROTOCOL_REST:
+        return _lite_diagnostics(entry, coordinator, config_data)
 
     data = coordinator.data
     base = {
@@ -66,6 +69,8 @@ async def async_get_config_entry_diagnostics(
             "current_mode_text":  data.current_mode_text   if data else None,
             "alarm_code":         data.alarm_code          if data else None,
             "alarm_text":         data.alarm_text          if data else None,
+            "unit_mode_mask":     getattr(data, "unit_mode_mask", None) if data else None,
+            "alarm_mask":         getattr(data, "alarm_mask", None)     if data else None,
             "temp_abluft":        data.temp_abluft         if data else None,
             "temp_zuluft":        data.temp_zuluft         if data else None,
             "temp_aussenluft":    data.temp_aussenluft     if data else None,
@@ -147,3 +152,52 @@ async def async_get_config_entry_diagnostics(
         }
 
     return base
+
+
+def _lite_diagnostics(
+    entry: KWLConfigEntry, coordinator: Any, config_data: dict[str, Any]
+) -> dict[str, Any]:
+    """Diagnose für lite-Geräte (REST).
+
+    Enthält das ROHE ``RESULT``-Objekt der Statusantwort: Das ist der wichtigste
+    Beitrag für die Hardware-Validierung, weil die Integration aus der App
+    abgeleitet wurde (siehe docs/lite-rest.md) und Feldnamen/Skalierungen
+    dadurch geprüft werden können.
+    """
+    data = coordinator.data
+    return {
+        "config_entry": config_data,
+        "protocol": PROTOCOL_REST,
+        "experimental": True,
+        "coordinator": {
+            "last_update_success": coordinator.last_update_success,
+            "update_interval_seconds": (
+                coordinator.update_interval.total_seconds()
+                if coordinator.update_interval else None
+            ),
+        },
+        "options": {"scan_interval": entry.options.get("scan_interval", 30)},
+        "device_data": (
+            {
+                "device_type": data.device_type,
+                "firmware": data.firmware,
+                "powered": data.powered,
+                "function": data.function,
+                "season": data.season,
+                "room_temp": data.room_temp,
+                "water_temp": data.water_temp,
+                "setpoint": data.setpoint,
+                "humidity": data.humidity,
+                "air_quality_raw": data.air_quality_raw,
+                "air_quality_level": data.air_quality_level,
+                "alarms": list(data.alarms),
+                "contact_presence": data.contact_presence,
+                "key_lock": data.key_lock,
+                "calendar_active": data.calendar_active,
+                "standalone": data.standalone,
+                "raw_result": data.result,
+            }
+            if data else None
+        ),
+    }
+

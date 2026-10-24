@@ -219,11 +219,14 @@ class TestBinarySensorPlatform:
         block = src[idx:idx+250]
         assert "PROTOCOL_MODBUS" in block
 
-    def test_alarm_active_uses_alarm_code(self):
+    def test_alarm_active_uses_has_alarm(self):
+        """alarm_active nutzt KWLFlexData.has_alarm (letzter Alarm 516 ODER
+        aktive Alarm-Bitmaske 170); has_alarm selbst prüft alarm_code."""
         src = _src("binary_sensor.py")
         idx = src.find('key="alarm_active"')
         block = src[idx:idx+250]
-        assert "alarm_code" in block
+        assert "has_alarm" in block
+        assert "alarm_code" in _src("flex_coordinator.py")
 
     def test_analytics_default_http(self):
         src = _src("binary_sensor.py")
