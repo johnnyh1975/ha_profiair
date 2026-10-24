@@ -103,7 +103,9 @@ class KWLLiteData:
     firmware: str | None
     ip: str | None
     device_type: str
-    result: dict[str, Any] = field(default_factory=dict, compare=False)
+    # Rohes RESULT, Geheimnisse maskiert (siehe _redact_result). Nicht im repr,
+    # damit es nie versehentlich in Logs landet.
+    result: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def contact_presence(self) -> bool:
@@ -150,6 +152,22 @@ def _str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+REDACTED: Final[str] = "__OBFUSCATED__"
+
+
+def _redact_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Kopie von RESULT ohne Passwörter.
+
+    Die Referenzbibliothek ``innova-controls`` maskiert ``RESULT["pwd"]``
+    ausdrücklich, "to avoid exposing it in logs": Die Statusantwort kann also
+    ein Passwortfeld enthalten (vermutlich das WLAN-/Geräte-Passwort).
+    """
+    return {
+        k: (REDACTED if any(w in str(k).lower() for w in ("pwd", "pass")) else v)
+        for k, v in result.items()
+    }
 
 
 def parse_status(payload: Any) -> KWLLiteData:
@@ -221,7 +239,7 @@ def parse_status(payload: Any) -> KWLLiteData:
         firmware=_str(sw.get("V")),
         ip=_str(net.get("ip")),
         device_type=device_type,
-        result=dict(result),
+        result=_redact_result(result),
     )
 
 

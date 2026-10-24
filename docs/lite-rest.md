@@ -85,7 +85,15 @@ Ohne diese Rückmeldungen bleibt die Unterstützung experimentell.
 - Analyse der App „profi-air smart control“ 1.2.6 (WebView-JavaScript und native
   DEX-Klassen). Alle Aussagen beschreiben, was die **App** tut — nicht
   zwingend, was die Firmware akzeptiert.
-- Die Python-Bibliothek `innova-controls` (PyPI) spricht dieselbe lokale API für
-  AirLeaf-Geräte; sie wurde als Referenz herangezogen, aber **nicht** als
-  Abhängigkeit eingebunden (Einzelentwickler, Async-Fähigkeit unklar, nicht mit
-  Fränkische-Geräten getestet).
+- Die Python-Bibliothek `innova-controls` 2.2.4 (PyPI, Apache-2.0) spricht
+  dieselbe lokale API für AirLeaf-Geräte. Ihr Quellcode bestätigt unabhängig
+  von der App die Endpunkte, Funktionscodes (`fn` 1–4), Betriebsartcodes (`wm`
+  3/5) und die Statusfelder `ps`, `ta`, `tw`, `sp`, `kl`, `cm` samt Skalierung
+  ÷ 10. Sie wurde als Referenz herangezogen, aber **nicht** als Abhängigkeit
+  eingebunden: Einzelentwickler, nur an einem Innova-2.0-Gerät getestet, unbekannte
+  `deviceType` fallen auf „2.0“ zurück (die lite-App nimmt `002` an), `fn = 0`
+  löst dort einen `KeyError` aus, Fehler werden verschluckt, und sie kennt weder
+  Feuchte, Luftqualität noch Alarme.
+- Die Bibliothek maskiert `RESULT["pwd"]`: Die Statusantwort kann ein
+  Passwortfeld enthalten. Diese Integration maskiert Felder mit `pwd`/`pass` im
+  Namen in `raw_result` und im Datenobjekt.

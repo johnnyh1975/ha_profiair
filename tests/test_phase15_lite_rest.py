@@ -127,6 +127,14 @@ class TestParseStatus:
         assert d.room_temp is None and d.function is None and d.setpoint is None
         assert d.humidity is None
 
+    def test_password_fields_are_masked_in_raw_result(self):
+        """innova-controls maskiert RESULT["pwd"]; wir tun es ebenfalls."""
+        d = _client_mod().parse_status(_status_payload(pwd="geheim", wifiPassword="x", other=1))
+        assert d.result["pwd"] == "__OBFUSCATED__"
+        assert d.result["wifiPassword"] == "__OBFUSCATED__"
+        assert d.result["other"] == 1
+        assert "geheim" not in repr(d) and "geheim" not in json.dumps(d.result)
+
     def test_result_is_kept_raw(self):
         d = _client_mod().parse_status(_status_payload(extra_field=7))
         assert d.result["extra_field"] == 7
