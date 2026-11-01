@@ -15,7 +15,7 @@
 # Pins are exact so a CI run is reproducible. Dependabot watches this file
 # weekly (see .github/dependabot.yml) and will open a PR when any of these
 # has an update — the full suite then runs against it before merge.
-pytest==9.1.1
+pytest==9.2.0
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 pymodbus==3.16.1
