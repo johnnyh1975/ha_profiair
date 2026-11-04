@@ -45,10 +45,10 @@
       },
       "installer_menu": {
         "title": "Installateur-Zugang",
-        "description": "Möchtest du Installateur-Zugangsdaten eingeben?\n\n**Mit Zugangsdaten:** Voller Schreibzugriff (Lüftungsstufen, Modi).\n**Überspringen:** Nur Lesen — alle Sensordaten verfügbar, keine Steuerung.",
+        "description": "Möchtest du Installateur-Zugangsdaten eingeben?\n\n**Mit Zugangsdaten:** Zugriff auf den Installateur-Bereich (Temperaturkorrekturen, Luftmengen, Bypass-Einstellungen unter install.htm).\n**Überspringen:** Der Installateur-Bereich bleibt gesperrt. Alle Sensordaten sind verfügbar, aber Lüftungsstufe, Party-Timer, Bypass und Bypass-Schwellen lassen sich weiterhin über die offene Geräteschnittstelle (stufe.cgi / setup.htm) steuern – auch ohne Zugangsdaten.",
         "menu_options": {
           "auth": "Zugangsdaten eingeben",
-          "skip_installer": "Überspringen (nur Lesezugriff)"
+          "skip_installer": "Überspringen (ohne Installateur-Bereich)"
         }
       },
       "confirm_flex": {
@@ -520,14 +520,18 @@
     "step": {
       "init": {
         "title": "Optionen",
-        "description": "Gerätetyp, Poll-Intervall und Nennleistung pro Stufe anpassen.\n\nDie Leistungswerte können mit einem Strommessgerät gemessen werden für maximale Genauigkeit. Stufe 4 dient zusätzlich als Referenzanker für die dynamische **Aktuelle Leistung** Berechnung (Fanlaufgesetz P ∝ n³).",
+        "description": "Gerätetyp, Poll-Intervall und Nennleistung pro Stufe anpassen.\n\nDie Leistungswerte können mit einem Strommessgerät gemessen werden für maximale Genauigkeit. Stufe 4 dient zusätzlich als Referenzanker für die dynamische **Aktuelle Leistung** Berechnung (Fanlaufgesetz P ∝ n³).\n\n**Geräteuhr:** Ist die Option aktiviert, schreibt die Integration die Uhrzeit auf das Gerät. Standard: aus.",
         "data": {
           "scan_interval": "Poll-Intervall (Sekunden)",
           "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
           "watt_level_2": "Stufe 2 – Reduziert (W)",
           "watt_level_3": "Stufe 3 – Nennlüftung (W)",
           "watt_level_4": "Stufe 4 – Intensivlüftung (W)",
-          "model": "Gerätetyp"
+          "model": "Gerätetyp",
+          "sync_time": "Geräteuhr aus Home Assistant stellen"
+        },
+        "data_description": {
+          "sync_time": "Schreibt alle 24 h (und beim Start) die Uhrzeit auf das Gerät (touch: /time.htm, flex/flat: Register 40111). Standardmäßig aus. Das Gerät hat keinen NTP-Zugang und läuft ohne Synchronisation langsam aus dem Takt."
         }
       }
     }

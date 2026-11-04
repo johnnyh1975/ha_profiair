@@ -44,12 +44,14 @@ from .analytics import (
 )
 from .const import (
     CONF_SCAN_INTERVAL,
+    CONF_SYNC_TIME,
     CONF_WATT_LEVEL_1,
     CONF_WATT_LEVEL_2,
     CONF_WATT_LEVEL_3,
     CONF_WATT_LEVEL_4,
     DEFAULT_MODBUS_PORT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SYNC_TIME,
     DOMAIN,
     FLEX_ALARM_BIT_TO_CODE,
     FLEX_ALARM_TEXT,
@@ -733,6 +735,11 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
         # Initiale Zeitsynchronisation + geplante Wiederholung.
         # Cleanup einheitlich über async_on_unload (wie der Analytics-Timer),
         # damit nicht zwei verschiedene Teardown-Mechanismen parallel laufen.
+        # Schreibt Register 40111 -- nur auf ausdrücklichen Wunsch (Option
+        # "sync_time", Standard: aus).
+        if not self.sync_time_enabled:
+            _LOGGER.debug("KWL Flex: Zeitsynchronisation deaktiviert (Option sync_time)")
+            return
         await self._async_sync_time()
         self.config_entry.async_on_unload(
             async_track_time_interval(
@@ -741,6 +748,11 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
                 TIME_SYNC_INTERVAL,
             )
         )
+
+    @property
+    def sync_time_enabled(self) -> bool:
+        """True, wenn der Nutzer die Geräteuhr-Synchronisation aktiviert hat."""
+        return bool(self.config_entry.options.get(CONF_SYNC_TIME, DEFAULT_SYNC_TIME))
 
     def async_teardown(self) -> None:
         """Freigabe von Ressourcen beim Entladen des Entries.
@@ -1290,6 +1302,8 @@ class KWLFlexCoordinator(DataUpdateCoordinator[KWLFlexData]):
 
     async def _async_sync_time(self, _now: Any = None) -> None:
         """Synchronisiert die Geräteuhrzeit (Unix-Timestamp → Register 40111)."""
+        if not self.sync_time_enabled:
+            return
         try:
             async with self._lock:
                 if not self._client.connected:

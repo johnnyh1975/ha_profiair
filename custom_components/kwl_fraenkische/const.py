@@ -170,6 +170,9 @@ ENDPOINT_STATUS  = "/status.xml"
 
 # Options Flow -- konfigurierbare Parameter
 CONF_SCAN_INTERVAL = "scan_interval"
+# Opt-in: Geräteuhr aus Home Assistant stellen (schreibt auf das Gerät). Standard: aus.
+CONF_SYNC_TIME = "sync_time"
+DEFAULT_SYNC_TIME = False
 DEFAULT_SCAN_INTERVAL = 30  # Sekunden
 MIN_SCAN_INTERVAL = 30
 MAX_SCAN_INTERVAL = 300  # 5 Minuten

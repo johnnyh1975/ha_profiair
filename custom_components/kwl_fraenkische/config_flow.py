@@ -16,9 +16,10 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    CONF_MODEL, CONF_PROTOCOL, CONF_SCAN_INTERVAL,
+    CONF_MODEL, CONF_PROTOCOL, CONF_SCAN_INTERVAL, CONF_SYNC_TIME,
     CONF_WATT_LEVEL_1, CONF_WATT_LEVEL_2, CONF_WATT_LEVEL_3, CONF_WATT_LEVEL_4,
-    DEFAULT_MODEL, DEFAULT_MODBUS_PORT, DEFAULT_SCAN_INTERVAL, DEFAULT_WATT,
+    DEFAULT_MODEL, DEFAULT_MODBUS_PORT, DEFAULT_SCAN_INTERVAL, DEFAULT_SYNC_TIME,
+    DEFAULT_WATT,
     DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL,
     LITE_DEFAULT_SCAN_INTERVAL, LITE_MIN_SCAN_INTERVAL,
     MODEL_DISPLAY, MODEL_DISPLAY_LITE, MODEL_PROFI_AIR_250, MODEL_PROFI_AIR_400,
@@ -151,7 +152,7 @@ class KWLConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """Menu: Installateur-Zugangsdaten eingeben oder überspringen.
 
         Mit Zugangsdaten: voller Schreibzugriff (Stufen, Betriebsmodus).
-        Ohne Zugangsdaten: nur Lesen (status.xml ist öffentlich).
+        Ohne Zugangsdaten: Installateur-Bereich gesperrt; Stufe, Party und Bypass schreiben weiterhin (stufe.cgi/setup.htm).
         """
         return self.async_show_menu(
             step_id="installer_menu",
@@ -472,6 +473,10 @@ class KWLOptionsFlow(OptionsFlow):
                 vol.Coerce(int),
                 vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
             ),
+            vol.Optional(
+                CONF_SYNC_TIME,
+                default=current.get(CONF_SYNC_TIME, DEFAULT_SYNC_TIME),
+            ): bool,
             vol.Required(
                 CONF_WATT_LEVEL_1,
                 default=current.get(CONF_WATT_LEVEL_1,
@@ -523,6 +528,10 @@ class KWLOptionsFlow(OptionsFlow):
                 vol.Coerce(int),
                 vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
             ),
+            vol.Optional(
+                CONF_SYNC_TIME,
+                default=current.get(CONF_SYNC_TIME, DEFAULT_SYNC_TIME),
+            ): bool,
             _opt_watt(1): watt_validator,
             _opt_watt(2): watt_validator,
             _opt_watt(3): watt_validator,

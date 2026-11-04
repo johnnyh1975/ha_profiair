@@ -4,7 +4,7 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/)
 [![Validate](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml/badge.svg)](https://github.com/johnnyh1975/ha_profiair/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.2.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.2.1-blue.svg)](CHANGELOG.md)
 
 > **What this integration makes possible:** a profi-air touch, flex, or flat unit that learns your home, optimises summer night cooling automatically, detects maintenance needs before they become faults, and tracks its own energy efficiency — without any cloud service, without a new device, and without changing the device firmware.
 
@@ -116,7 +116,7 @@ For touch devices, entity capabilities are discovered from the XML response — 
 - Home Assistant 2026.3 or newer
 - [HACS](https://hacs.xyz) installed
 - profi-air device reachable on your local network at a static IP
-- **Touch devices:** Installer credentials optional (factory default: `install` / `konfig12`). Without credentials: read-only mode, all sensors active, no fan level or write control.
+- **Touch devices:** Installer credentials optional (factory default: `install` / `konfig12`). Without credentials the installer area (`install.htm`: temperature corrections, airflow per level) stays locked, but all sensors are active **and the integration can still write** fan level, bypass mode, party timer and bypass thresholds through the device's open interface (`stufe.cgi` / `setup.htm`), which needs no login. There is no true read-only mode for touch devices.
 - **Flex/flat devices:** No credentials required. Modbus TCP port 502 must be reachable.
 
 ---
@@ -149,8 +149,8 @@ Enter the local IP of your KWL (e.g. `10.10.4.1`). The integration probes automa
 **Step 2 — Installer access**
 A menu appears with two options:
 
-- **Enter credentials** — full write access (fan levels, bypass control, party mode). Factory defaults: `install` / `konfig12`. Change this password on the device if you have not already done so.
-- **Skip (read-only)** — all sensor data is available, but level changes and write controls are disabled. Useful when installer credentials are not available.
+- **Enter credentials** — additionally unlocks the installer area (`install.htm`): temperature corrections and airflow per level. Factory defaults: `install` / `konfig12`. Change this password on the device if you have not already done so.
+- **Skip (no installer area)** — all sensor data is available and the installer-area controls do not work. Fan level, party timer, bypass mode and bypass thresholds still **write to the device** (`stufe.cgi` / `setup.htm` need no login). If you want no writes at all, leave those entities unused or disable them in Home Assistant.
 
 **Step 3 — Power reference values**
 These determine the accuracy of the Energy Dashboard and anchor the real-time power calculation. The 400 touch defaults are **measured values** (clamp meter, four levels). The 250 touch defaults are estimates — measure your own installation for accuracy.
@@ -560,6 +560,11 @@ Four individually configurable watt values — one per fan level.
 ### Poll interval
 Default 30 seconds. Range 30–300 s. Shorter intervals give more accurate analytics and more responsive automations.
 
+### Set device clock from Home Assistant (touch and flex/flat)
+**Off by default.** When enabled, the integration **writes the current Home Assistant time to the device** at startup and every 24 hours: on touch devices via `POST /time.htm` (time and summer/winter time, no login required), on flex/flat devices to register 40111 (local time). The device has no NTP access, so without this its clock drifts. Enable it only if you want Home Assistant to manage the device clock. Not available for lite devices (no clock is written).
+
+Upgrading from v2.2.0 or earlier: the clock was synchronised automatically before. It now stays untouched until you enable this option under *Configure*.
+
 ---
 
 ## After filter replacement
@@ -638,7 +643,7 @@ Entity IDs are frozen at first registration per HA convention. New installations
 The firmware treats `manual_open` as a temporary state and reverts to `Auto` within seconds. This is intentional. The summer cooling automation is designed around this: it controls fan level (stable) and relies on the firmware Auto logic for bypass, with thresholds set to their minimum values.
 
 **Operating hours and clock drift**
-The device has no NTP access. Clock drift accumulates over the device lifetime (typical 10–20% fast over 10+ years). Operating hours are accurate relative to each other and for per-level comparison; absolute values may be inflated. The maintenance alert fires on the device's own counter, which is internally consistent.
+The device has no NTP access (the integration can set the clock from Home Assistant if you enable *Set device clock*, see Options). Clock drift accumulates over the device lifetime (typical 10–20% fast over 10+ years). Operating hours are accurate relative to each other and for per-level comparison; absolute values may be inflated. The maintenance alert fires on the device's own counter, which is internally consistent.
 
 **Party mode**
 Party mode activates Stufe 4 for a device-side timer. The fan entity correctly reports preset_mode `level_4` during party mode. The `kwl_sommer_kuehlung_aktiv` helper reads `on` during party mode, which is correct.

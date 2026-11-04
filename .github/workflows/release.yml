@@ -69,6 +69,10 @@ jobs:
           pip install -r requirements-test-frozen.txt
 
       - name: Run full test suite (release gate — must pass before packaging)
+        env:
+          # Keep the test run from writing bytecode into the source tree that
+          # is packaged below: what HACS installs must match the repository.
+          PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest tests/ -q
 
       - name: Prepare release notes
@@ -114,7 +118,9 @@ jobs:
           mkdir -p /tmp/hacs-package
           cp -r custom_components/kwl_fraenkische/. /tmp/hacs-package/
           cd /tmp/hacs-package
-          zip -r "${GITHUB_WORKSPACE}/ha-profiair.zip" .
+          # Belt and braces: never ship bytecode caches (they are not in the tagged source).
+          find . -name __pycache__ -type d -prune -exec rm -rf {} +
+          zip -r "${GITHUB_WORKSPACE}/ha-profiair.zip" . -x '*__pycache__*' -x '*.pyc'
 
       - name: Validate HACS ZIP structure
         # Makes the three rules from the comment above machine-checked, so a
@@ -141,7 +147,13 @@ jobs:
             exit 1
           fi
 
-          echo "ha-profiair.zip structure OK: manifest.json at root, no custom_components/ wrapper, no hacs.json."
+          if echo "$FILE_LIST" | grep -Eq '__pycache__|\.pyc$'; then
+            echo "::error::Bytecode (__pycache__ / .pyc) found in the zip — HACS must install exactly what is in the tagged source."
+            echo "$FILE_LIST" | grep -E '__pycache__|\.pyc$'
+            exit 1
+          fi
+
+          echo "ha-profiair.zip structure OK: manifest.json at root, no custom_components/ wrapper, no hacs.json, no bytecode."
 
       - name: Build full-review ZIP
         # Not read by HACS. Serves two purposes: a complete snapshot for
@@ -161,7 +173,8 @@ jobs:
             cp "${{ steps.notes.outputs.path }}" "/tmp/full-package/RELEASE_NOTES_${{ steps.version.outputs.tag }}.md"
           fi
           cd /tmp/full-package
-          zip -r "${GITHUB_WORKSPACE}/ha-profiair-${{ steps.version.outputs.tag }}-full.zip" .
+          find . -name __pycache__ -type d -prune -exec rm -rf {} +
+          zip -r "${GITHUB_WORKSPACE}/ha-profiair-${{ steps.version.outputs.tag }}-full.zip" . -x '*__pycache__*' -x '*.pyc'
 
       - name: Create GitHub Release with assets
         uses: softprops/action-gh-release@v3

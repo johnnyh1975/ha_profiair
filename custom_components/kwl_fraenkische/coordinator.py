@@ -29,8 +29,8 @@ from .analytics import (
 
 from .const import (
     ALL_KNOWN_TAGS,
-    CONF_MODEL, CONF_SCAN_INTERVAL,
-    DEFAULT_MODEL, DEFAULT_SCAN_INTERVAL,
+    CONF_MODEL, CONF_SCAN_INTERVAL, CONF_SYNC_TIME,
+    DEFAULT_MODEL, DEFAULT_SCAN_INTERVAL, DEFAULT_SYNC_TIME,
     DOMAIN,
     ENDPOINT_INSTALL,
     ENDPOINT_TIME,
@@ -687,6 +687,12 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
             )
         )
 
+        # Zeitsynchronisation schreibt auf das Gerät -- nur auf ausdrücklichen
+        # Wunsch (Option "sync_time", Standard: aus).
+        if not self.sync_time_enabled:
+            _LOGGER.debug("KWL Zeitsynchronisation deaktiviert (Option sync_time)")
+            return
+
         await self._async_sync_time()
 
         self._unsub_time_sync = async_track_time_interval(
@@ -695,6 +701,11 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
             TIME_SYNC_INTERVAL,
         )
         _LOGGER.debug("KWL Zeitsynchronisation eingerichtet (alle 24h)")
+
+    @property
+    def sync_time_enabled(self) -> bool:
+        """True, wenn der Nutzer die Geräteuhr-Synchronisation aktiviert hat."""
+        return bool(self.config_entry.options.get(CONF_SYNC_TIME, DEFAULT_SYNC_TIME))
 
     async def _async_sync_time_callback(self, _now: object = None) -> None:
         """Callback fuer den 24h-Timer."""
@@ -707,6 +718,8 @@ class KWLCoordinator(DataUpdateCoordinator[KWLData]):
         korrekt aus der konfigurierten HA-Zeitzone abgeleitet wird.
         Wird uebersprungen wenn /time.htm nicht erreichbar ist.
         """
+        if not self.sync_time_enabled:
+            return
         if self.capabilities and not self.capabilities.has_time_sync:
             _LOGGER.debug("Zeitsync nicht verfuegbar -- Endpunkt nicht erreichbar")
             return

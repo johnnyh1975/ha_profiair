@@ -45,10 +45,10 @@
       },
       "installer_menu": {
         "title": "Installer Access",
-        "description": "Do you want to enter installer credentials?\n\n**With credentials:** Full write access (ventilation levels, modes).\n**Skip:** Read-only — all sensor data available, no control.",
+        "description": "Do you want to enter installer credentials?\n\n**With credentials:** Access to the installer area (temperature corrections, airflow, bypass settings under install.htm).\n**Skip:** The installer area stays locked. All sensor data is available, but ventilation level, party timer, bypass and bypass thresholds can still be controlled through the device's open interface (stufe.cgi / setup.htm) — even without credentials.",
         "menu_options": {
           "auth": "Enter credentials",
-          "skip_installer": "Skip (read-only access)"
+          "skip_installer": "Skip (no installer area)"
         }
       },
       "confirm_flex": {
@@ -520,14 +520,18 @@
     "step": {
       "init": {
         "title": "Options",
-        "description": "Adjust device model, poll interval and rated power per fan level.\n\nPower values can be measured with a power meter for maximum accuracy. Stufe 4 also serves as the reference anchor for the dynamic **Aktuelle Leistung** calculation (fan law P ∝ n³).",
+        "description": "Adjust device model, poll interval and rated power per fan level.\n\nPower values can be measured with a power meter for maximum accuracy. Stufe 4 also serves as the reference anchor for the dynamic **Aktuelle Leistung** calculation (fan law P ∝ n³).\n\n**Device clock:** When enabled, the integration writes the time to the device. Default: off.",
         "data": {
           "scan_interval": "Poll interval (seconds)",
           "watt_level_1": "Stufe 1 – Feuchteschutz (W)",
           "watt_level_2": "Stufe 2 – Reduziert (W)",
           "watt_level_3": "Stufe 3 – Nennlüftung (W)",
           "watt_level_4": "Stufe 4 – Intensivlüftung (W)",
-          "model": "Device model"
+          "model": "Device model",
+          "sync_time": "Set device clock from Home Assistant"
+        },
+        "data_description": {
+          "sync_time": "Writes the time to the device at startup and every 24 h (touch: /time.htm, flex/flat: register 40111). Off by default. The device has no NTP access and drifts without synchronisation."
         }
       }
     }

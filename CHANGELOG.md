@@ -5,6 +5,41 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [2.2.1] – 2026-11
+
+Reaktion auf das HACS-Default-Review (frenck).
+
+### Geändert: Geräteuhr-Synchronisation ist jetzt eine Option (Standard: aus)
+
+Bisher schrieb die Integration bei jedem Setup und alle 24 h die Uhrzeit auf das
+Gerät (touch: `POST /time.htm`, flex/flat: Register 40111) — auch ohne
+Installateur-Zugangsdaten und ohne dass das dokumentiert war. Jetzt:
+
+- Neue Option **„Geräteuhr aus Home Assistant stellen“** (Einstellungen →
+  Konfigurieren, touch und flex/flat). **Standard: aus**, es wird nichts
+  geschrieben und kein Timer angelegt.
+- **Upgrade-Hinweis:** Wer sich auf die automatische Synchronisation verlassen
+  hat (seit v2.1.1), muss die Option einmal aktivieren.
+- README dokumentiert die Option und was sie schreibt.
+
+### Korrigiert: Wortlaut zum „Nur-Lesen“-Modus (touch)
+
+„Überspringen“ der Installateur-Zugangsdaten ist **kein** Nur-Lesen-Modus:
+Lüftungsstufe, Party-Timer, Bypass-Modus und Bypass-Schwellen schreiben weiter
+über `stufe.cgi` / `setup.htm` (ohne Login). Gesperrt bleibt nur der
+Installateur-Bereich (`install.htm`). README, Config-Flow-Menü und
+Übersetzungen (de/en) sind entsprechend korrigiert.
+
+### Behoben: Release-Zip enthielt Bytecode
+
+- `ha-profiair.zip` enthielt `__pycache__/*.pyc` aus dem Testlauf des
+  Release-Workflows. Der Workflow lässt den Testlauf jetzt keinen Bytecode
+  schreiben, schließt `__pycache__`/`*.pyc` beim Packen aus und bricht ab, falls
+  doch welcher im Zip landet.
+- 42 versehentlich committete `__pycache__`-Dateien (aus dem v2.2.0-Release-
+  Commit) sind aus dem Repository entfernt, `.gitignore` ergänzt.
+- 21 neue Tests (`tests/test_phase16_hacs_review.py`).
+
 ## [2.2.0] – 2026-10
 
 ### flex/flat: Abgleich mit der Hersteller-App (Cockpit 1.0.23)
