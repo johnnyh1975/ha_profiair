@@ -16,7 +16,7 @@
 # weekly (see .github/dependabot.yml) and will open a PR when any of these
 # has an update — the full suite then runs against it before merge.
 pytest==9.1.1
-pytest-asyncio==1.4.0
+pytest-asyncio==1.4.1.post1
 pytest-cov==7.1.0
 pymodbus==3.16.1
 aiohttp==3.11.11
